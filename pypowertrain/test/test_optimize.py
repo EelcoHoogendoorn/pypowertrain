@@ -63,3 +63,47 @@ def test_optimize():
 	system = optimized.replace(battery__charge_state=0.5)
 	system_plot(system, targets=targets)
 
+
+def test_optimize_botwheel():
+	"""Seems like the odrive botwheel does better all around with odrive controllers,
+	when it has fewer turns.
+
+	Lets find out how many fewer exactly.
+	"""
+	system = System(
+		actuator=Actuator(
+			motor=odrive.botwheel(),
+			controller=odrive.s1(),
+		),
+		battery=define_battery_limits(v=24, wh=1e3),
+	)
+
+	bounds = {
+		'actuator__motor__turns': (0.2, 1),
+	}
+
+	target_torque = [-30, +30]
+	target_rpm = [10] * 2
+	target_dissipation = [10000] * 2
+	target_weight = [1] * 2
+
+	# make sure optimized motor meets specs over a range of (adverse) conditions
+	conditions = [
+		{
+			'battery__charge_state': s,
+			'actuator__motor__coil_temperature': t,
+			'actuator__motor__magnet_temperature': t,
+		}
+		for s in [0.1, 0.9]
+		for t in [0, 40]
+	]
+	targets = target_torque, target_rpm, target_dissipation, target_weight
+
+	optimized = system_optimize(system, bounds, targets, conditions)
+
+	print(optimized)
+	print(optimized.actuator.motor.turns)
+
+	system = optimized.replace(battery__charge_state=0.99)
+	system_plot(system, targets=targets)
+

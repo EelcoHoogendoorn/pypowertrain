@@ -195,7 +195,7 @@ def botwheel():
 		poles=15*2,
 		slots=9*3,
 
-		turns=5,			# FIXME: unknown!
+		turns=12,			# FIXME: unknown!, but likely a high number
 		radius=150e-3/2,
 		stack_height=54e-3,
 		tooth_depth=5e-3,	# visual approximate

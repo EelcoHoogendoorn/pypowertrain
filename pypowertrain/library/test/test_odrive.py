@@ -43,19 +43,22 @@ def test_M8325s_100KV():
 
 
 def test_botwheel():
-	"""This thing wasnt built for efficiency; or maybe doing something wrong?"""
+	"""This thing wasnt built for efficiency; or maybe doing something wrong?
+	Rescaling the turns seems like a pareto improvement
+	"""
 	system = System(
 		actuator=Actuator(
 			motor=odrive.botwheel().rescale(
-				turns=1/4
+				turns=0.4
 			),
 			controller=odrive.s1().replace(
-				# freq_limit=2000
 				bus_voltage_limit=24,
-				# modulation_factor=1,
 			),
 		),
-		battery=define_battery_limits(v=24, wh=1e3),
+		battery=define_battery_limits(v=24, wh=1e3).replace(
+			charge_state=0.99
+		),
 		# battery=define_battery_58v(),
 	)
+	system.actuator.plot()
 	system_plot(system)
