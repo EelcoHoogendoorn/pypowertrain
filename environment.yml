@@ -1,0 +1,10 @@
+name: pypowertrain
+channels:
+  - anaconda
+  - conda-forge
+dependencies:
+  - python
+  - numpy
+  - scipy >= 1.9
+  - matplotlib
+  - pytest
