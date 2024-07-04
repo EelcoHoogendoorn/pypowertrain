@@ -2,6 +2,8 @@
 pypowertrain
 =========
 
+[Get started with a runnnable notebook!](https://mybinder.org/v2/gh/EelcoHoogendoorn/pypowertrain/HEAD?labpath=getting_started.ipynb)
+
 Summary
 -------
 This package implements functionality for the simulation and optimization of electric powertrains with field-oriented controllers. It seeks to be a repository of well-characterized components, making their performance easy to evaluate in combination.
