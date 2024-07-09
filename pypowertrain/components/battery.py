@@ -8,7 +8,7 @@ class Cell(Base):
 	nominal_voltage: float
 	minimum_voltage: float
 	resistance: float
-	capacity: float
+	capacity: float	# Ah
 	peak_discharge: float
 	peak_charge: float
 	mass: float
@@ -44,6 +44,9 @@ class Battery(Base):
 	def resistance(self):
 		return self.cell.resistance * self.S / self.P
 
+	@property
+	def Ah(self): # in Ah
+		return self.P * self.cell.capacity
 	@property
 	def capacity(self): # in kwh
 		return self.S * self.P * self.cell.capacity * self.cell.nominal_voltage
