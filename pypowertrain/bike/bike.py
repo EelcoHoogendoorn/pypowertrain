@@ -22,7 +22,7 @@ class Bike(Base):
 	cog_rear: float = 0.5
 	cog_front: float = 0.5
 
-	Cf: float = 0.8
+	Cf: float = 0.6
 
 	@property
 	def wheelbase(self):
@@ -134,10 +134,22 @@ def bike_plot(
 
 	# FIXME: just using rear now? work out multi-motor system;
 	system = BikeSystem(actuator=bike.rear, battery=bike.battery, bike=bike)
-	# system_plot(system, targets=targets)
-	#
-	# return
-	dissipation, bus_power, mechanical_power, Iq, Id, torque = system_limits(system, trange, rpm)
+	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = system_limits(system, trange, rpm)
+	dissipation = copper_loss + iron_loss
+
+
+	# construct thermal curves
+	thermal_specs = [
+		{'color': 'green', 'dt': 5000, 'dT': 30, 'key': 'shell'},
+		{'color': 'yellow', 'dt': 5000, 'dT': 60, 'key': 'coils'},
+		{'color': 'orange', 'dt': 60, 'dT': 60, 'key': 'coils'},
+		{'color': 'red', 'dt': 2, 'dT': 40, 'key': 'coils'},
+	]
+	thermals = {
+		s['color']: system.actuator.temperatures(
+			mps, rpm, copper_loss, iron_loss, dt=s['dt'], key=s['key']) - s['dT']
+		for s in thermal_specs
+	}
 
 
 	# vehicle model
@@ -168,14 +180,15 @@ def bike_plot(
 	dm, de, ts = integrate_traject(mps[:idx + 1], abs_force/bike.weight, sample(dissipation))
 	print(f'{(bike.nominal_kmh/3.6) / ts / 9.81} G average accel')
 	print(f'{ts} s to nominal')
-	print(f'{de/bike.rear.heat_capacity_copper(dT=1)} dT(C) to nominal')
+	# print(f'{de/bike.rear.heat_capacity_copper(dT=1)} dT(C) to nominal')
 
 	sample = graph_sampler(wheel_force, -1e6, 0, idx + 1)
 	abs_force = abs_traction(bike, sample(wheel_force), 0 if bike.front is None else None)
 	dm, de, ts = integrate_traject(mps[:idx + 1], abs_force/bike.weight, sample(dissipation), reverse=True)
 	print(f'{(bike.nominal_kmh/3.6) / ts / 9.81} G average decel')
+	print(f'{dm}m to full stop')
 	print(f'{ts}s to full stop')
-	print(f'{de/bike.rear.heat_capacity_copper(dT=1)} dT(C) to full stop')
+	# print(f'{de/bike.rear.heat_capacity_copper(dT=1)} dT(C) to full stop')
 
 
 	# sample equilibrium load line at rated speed
@@ -190,24 +203,6 @@ def bike_plot(
 	print('runtime (h): ', bike.battery.capacity / power_use)
 	print('range (km): ', bike.battery.capacity / power_use * bike.nominal_kmh)
 
-	# construct thermal curves
-	heat_loss = bike.rear.heat_loss(rpm)
-	# at infinite time horizon, capacity does not matter
-	heat_inf_80c = dissipation - heat_loss
-	CE = bike.rear.heat_capacity(dT=40)
-	# let loss count 50% in 1min timeframe?
-	dt = 60 # s
-	heat_1min_40c = (dissipation - heat_loss / 2) * dt - CE
-	# in 2sec timeframe, we count copper coil mass capacity alone
-	CE = bike.rear.heat_capacity_copper(dT=40)
-	dt = 2
-	heat_2s_40c = dissipation * dt - CE
-
-	thermals = {
-		'yellow': heat_inf_80c,
-		'orange': heat_1min_40c,
-		'red': heat_2s_40c,
-	}
 
 	def imshow(im, **kwargs):
 		a = plt.pcolormesh(kph, trange, im, **kwargs)
@@ -229,8 +224,10 @@ def bike_plot(
 		for c, m in thermals.items():
 			contour(m, levels=[0], colors=c)
 
+		contour(dissipation, levels=[200], colors='purple')
+
 		if targets is not None:
-			t_torque, t_rpm, t_dissipation, t_weight = np.array(targets)
+			t_torque, t_rpm, t_dissipation, t_weight = [np.array(t) for t in targets]
 			plt.scatter(bike.rpm_to_kph(t_rpm), t_torque)
 
 		plt.xticks(kph[::20])
@@ -270,7 +267,7 @@ def bike_plot(
 	plt.figure()
 	g = wheel_force * bike.n_motors / bike.downforce
 	imshow(g, cmap='bwr', clim=(-bike.Cf, bike.Cf))
-	# contour(g, levels=np.linspace(-0.8, 0.8, 9, endpoint=True))
+	contour(g, levels=np.arange(-20, 20)*0.1, colors='gray')
 	plt.title('Acceleration (G)')
 	default_annotate()
 

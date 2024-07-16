@@ -10,7 +10,7 @@ def define_ebike(kmh, inch=24, turns=8):
 	return Bike(
 		rear=grin_actuator,
 		front=None,
-		battery=define_battery_75v(P=4),
+		battery=define_battery_75v(P=2),
 		CdA=0.7*0.8,
 		Cr=0.004,
 		structure_weight=15,
@@ -25,7 +25,7 @@ def define_moped(front=False):
 	return Bike(
 		rear=grin_actuator,
 		front=grin_actuator if front else None,
-		battery=define_battery_75v(P=8),	# aim for some 2.5kwh
+		battery=define_battery_limits(v=75, wh=2500),
 		CdA=0.6,
 		Cr=0.010,	# could be up to 15e-3?
 		structure_weight=30,
@@ -35,26 +35,25 @@ def define_moped(front=False):
 
 
 def define_motorcycle():
-	"""Can we make a faired motorcycle work at highway speed,
+	"""Can we make an electric motorcycle work at highway speed,
 	with dual direct drive hub motors?
 
-	need only about 3kw at highway speeds,
-	if putting some work into aero.
-
-	Still need a lot of controller power though
+	With regular aero, it is not looking great.
+	Aerodynamic fairing is quite essential to making this puzzle fit
 	"""
 
 	actuator = grin.actuator(turns=5).replace(
-		motor__radius=1.2,
+		geometry__radius_scale=1.2,
+		geometry__slot_depth=7e-3,
 		controller=odrive.pro_overclock(),
-		n_series=4,
+		n_series=3,
 		bus=Bus(1, 2e-3**2),
 	)
 	return Bike(
 		rear=actuator,
 		front=actuator,
 		battery=define_battery_limits(v=75, wh=4000),
-		CdA=0.6*0.15,	# slightly more frontal; but lets invest more in aero
+		CdA=0.6*0.3,	# slightly more frontal; but lets invest more in aero
 		# CdA=0.7*0.8,	# check how regular compares
 		Cr=0.02,# according to wikipedia 20e-3? could be as low as 15e-3? impossible to find sources
 		structure_weight=30+15,

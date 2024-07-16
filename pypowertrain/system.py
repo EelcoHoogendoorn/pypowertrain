@@ -1,5 +1,6 @@
-
+import numpy
 import numpy as np
+import skimage.filters
 
 from pypowertrain.utils import *
 from pypowertrain.components.actuator import Actuator
@@ -8,7 +9,7 @@ from pypowertrain.components.battery import Battery
 
 @dataclasses.dataclass(frozen=True)
 class System(Base):
-	"""simply battery-controller-motor system"""
+	"""Simple battery-controller-motor system"""
 	battery: Battery
 	actuator: Actuator
 
@@ -56,8 +57,7 @@ def system_limits(
 	if controller.field_weakening:
 		arange = np.linspace(-actuator.phase_current_limit, +actuator.phase_current_limit, gridsize+1)
 	else:
-		# bit of a mystery why not to include fw as a controller feature, but soit
-		arange = np.array([0.])
+		arange = np.array([0.])	# always pursue Id=0
 
 	# map output ranges to motor ranges
 	# FIXME: gearing efficiency makes torque function of rpm, through sign alone.
@@ -65,9 +65,9 @@ def system_limits(
 	#  alternatively; dont paramerize in terms of output torque? stick with EM torque?
 	rpm, trange = actuator.gearing.backward(rpm, trange)
 
-	salience = -(motor.Lq - motor.Ld)
+	salience = motor.electrical.salience # -(motor.Lq - motor.Ld)
 	Id, em_torque = np.meshgrid(arange, trange)
-	Iq = em_torque / (3/2) / motor.pole_pairs / (motor.flux + Id * salience)
+	Iq = em_torque / (3/2) / motor.geometry.pole_pairs / (motor.flux + Id * salience)
 
 	# should ripple count towards phase current limits? i guess so conservatively.
 	Is = Id**2 + Iq**2 + actuator.ripple_current**2
@@ -76,16 +76,19 @@ def system_limits(
 	Rt = actuator.phase_resistance
 
 
-	Vlim = lambda omega: (Id*Rt - omega*motor.Lq*Iq)**2 + (Iq*Rt + omega*motor.Ld*Id + omega*motor.flux)**2
-	# Vlim = lambda omega: (- omega*motor.Lq*Iq)**2 + ( + omega*motor.Ld*Id + omega*motor.flux)**2
+	Vlim = lambda omega: (Id*Rt - omega*motor.electrical.Lq*Iq)**2 + (Iq*Rt + omega*motor.electrical.Ld*Id + omega*motor.flux)**2
 	def process_omega(omega_axle_hz):
 		"""construct and intersect amp and V limits for a given omega"""
-		omega_elec_hz = omega_axle_hz * motor.pole_pairs
+		omega_elec_hz = omega_axle_hz * motor.geometry.pole_pairs
 		omega_axle_rad = omega_axle_hz * 2 * np.pi
 		omega_elec_rad = omega_elec_hz * 2 * np.pi
 
-		drag_torque = motor.hysteresis_drag(omega_elec_rad)
-		dissipation = Is*Rt + omega_axle_rad * drag_torque + omega_elec_rad**2*Is*motor.eddy_em
+		# FIXME: work Id-FW-dependence into iron drag? Id division should be about equal to demag current limit
+		#  effect seems quite minimal in practice; like 3% kph continuous rating
+		drag_torque = motor.iron_drag(omega_elec_rad) #* (1+Id/300)**2
+		copper_loss = Is*Rt
+		iron_loss = omega_axle_rad * drag_torque + omega_elec_rad**2*Is*0
+		dissipation = copper_loss + iron_loss
 		mechanical_torque = em_torque - drag_torque
 		mechanical_power = mechanical_torque * omega_axle_rad
 		bus_power = dissipation + mechanical_power
@@ -105,7 +108,7 @@ def system_limits(
 		# when switching large current zero bus regen braking
 		mask = np.logical_and(mask, np.abs(bus_power) < actuator.power_limit)
 
-		# of all valid Id options for a given em_torque, we pick the one most favorable to bus power
+		# of all valid Id options for a given em_torque, we pick the one most favorable to battery
 		ma = np.ma.array(bus_power, mask=1-mask)
 		# this is a reduction over Id
 		mask = np.ma.min(ma, axis=1).mask
@@ -117,9 +120,9 @@ def system_limits(
 
 		return [
 			np.ma.array(o[i, idx], mask=mask).filled(np.nan)
-			for o in [dissipation, bus_power, mechanical_power, Iq, Id, mechanical_torque]
+			for o in [copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, mechanical_torque]
 		]
-	# good old for loop; memory use might explode otherwise
+	# good old for loop rather than vectorize over rpm; memory use might explode otherwise
 	outputs = np.array([process_omega(o) for o in rpm/60])
 	return np.moveaxis(outputs, [1, 2, 0], [0, 1, 2])
 
@@ -135,10 +138,10 @@ def round(x, digits):
 def system_detect_limits(system, fw=3, frac=0.95, padding=1.1):
 	"""auto-detect some reasonably tight limits on the actuator system"""
 	max_torque = system.actuator.peak_torque * 1.1
-	max_rpm = system.actuator.motor.Kv * system.battery.voltage * fw
+	max_rpm = system.actuator.motor.electrical.Kv * system.battery.voltage * fw
 	trange = np.linspace(-max_torque, +max_torque, 50, endpoint=True)
 	rpm = np.linspace(0, max_rpm, 50, endpoint=False)
-	dissipation, bus_power, mechanical_power, Iq, Id, torque = system_limits(system, trange, rpm)
+	_, _, _, _, _, _, torque = system_limits(system, trange, rpm)
 	max_torque = np.max(np.abs(np.nan_to_num(torque)))
 	max_rpm = rpm[::-1][np.argmin(np.mean(np.isnan(torque), axis=0)[::-1] > frac)]
 	max_rpm = round((max_rpm) * padding, 2)
@@ -154,7 +157,7 @@ def system_plot(
 	max_torque=None,
 	targets=None,
 ):
-
+	"""mpl plots of system limits"""
 	import matplotlib.pyplot as plt
 
 	# setup calculation grids
@@ -165,24 +168,21 @@ def system_plot(
 	torque_range = np.linspace(-max_torque, +max_torque, n_torque + 1, endpoint=True)
 
 	# eval the system performance graphs
-	dissipation, bus_power, mechanical_power, Iq, Id, torque = system_limits(system, torque_range, rpm_range)
+	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = system_limits(system, torque_range, rpm_range)
+	dissipation = copper_loss + iron_loss
 
 	# construct thermal curves
-	heat_loss = system.actuator.heat_loss(rpm_range)
-	# at infinite time horizon, capacity does not matter
-	heat_inf_80c = dissipation - heat_loss
-	CE = system.actuator.heat_capacity_stator(dT=40)
-	dt = 60 # s
-	heat_1min_40c = (dissipation - heat_loss) - CE / dt
-	# heat_1min_40c = dissipation - 70	# overlay with rated power
-	# in 2sec timeframe, we count copper coil mass capacity alone
-	CE = system.actuator.heat_capacity_copper(dT=40)
-	dt = 2
-	heat_2s_40c = (dissipation - heat_loss) - CE / dt
+	thermal_specs = [
+		{'color': 'yellow', 'dt': 5000, 'dT': 60},
+		{'color': 'orange', 'dt': 60, 'dT': 60},
+		{'color': 'red', 'dt': 2, 'dT': 40},
+	]
+	# NOTE: hardcoded zero here now; but should be configurable on the system object
+	linear_velocity = rpm_range * 0.0
 	thermals = {
-		'yellow': heat_inf_80c,
-		'orange': heat_1min_40c,
-		'red': heat_2s_40c,
+		s['color']: system.actuator.temperatures(
+			linear_velocity, rpm_range, copper_loss, iron_loss, dt=s['dt']) - s['dT']
+		for s in thermal_specs
 	}
 
 	x, X = system.x_axis(rpm_range)
@@ -198,14 +198,14 @@ def system_plot(
 	def default_annotate():
 		# delineate FW-region
 		contour(Id, levels=[-1], colors='white')
-		# plot zero torque line
+		# plot x axis
 		plt.plot(X, X * 0, c='gray')
 		# plot thermal limits
 		for c, m in thermals.items():
 			contour(m, levels=[0], colors=c)
 
 		if targets is not None:
-			t_torque, t_rpm, t_dissipation, t_weight = np.array(targets)
+			t_torque, t_rpm, t_dissipation, t_weight = [np.array(t) for t in targets]
 			plt.scatter(t_rpm, t_torque)
 
 		plt.xlabel(x)

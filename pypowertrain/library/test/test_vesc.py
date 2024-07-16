@@ -19,7 +19,7 @@ def test_maytech_100a():
 def test_triforce_a50s():
 	system = System(
 		actuator=Actuator(
-			motor=cubemars.RI100(),
+			motor=cubemars.RO100(),
 			controller=vesc.triforce_a50s(),
 		),
 		battery=define_battery_75v(),

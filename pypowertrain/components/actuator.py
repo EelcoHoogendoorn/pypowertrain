@@ -4,7 +4,7 @@ from pypowertrain.utils import *
 
 from pypowertrain.components.bus import Bus
 from pypowertrain.components.controller import Controller
-from pypowertrain.components.motor import Motor
+from pypowertrain.components.motor.motor import Motor
 from pypowertrain.components.gearing import Gearing, define_direct
 
 
@@ -21,13 +21,14 @@ class Actuator(Base):
 
 	@property
 	def weight(self):
-		return self.motor.weight + self.controller.weight * self.n_series + self.bus.weight
+		return self.motor.mass.total + self.controller.weight * self.n_series + self.bus.weight
 
 	@property
 	def peak_torque(self):
 		A = self.phase_current_limit
-		salience = (self.motor.Ld - self.motor.Lq)
-		t = A * self.motor.Kt + A * A / 2 * np.abs(salience) * (3/2) * self.motor.pole_pairs
+		# salience = (self.motor.Ld - self.motor.Lq)
+		salience = self.motor.electrical.salience
+		t = A * self.motor.Kt + A * A / 2 * np.abs(salience) * (3/2) * self.motor.geometry.pole_pairs
 		_, t = self.gearing.forward(1, t)
 		return t
 	@property
@@ -48,33 +49,25 @@ class Actuator(Base):
 	def ripple_current(self):
 		voltage = self.controller.bus_voltage_limit * self.n_series	# FIXME: conservative; pass in from battery?
 		ripple = lambda L: voltage / (2*self.controller.ripple_freq*L) / np.sqrt(2) / np.sqrt(3)
-		return np.sqrt(ripple(self.motor.Lq)**2 + ripple(self.motor.Ld)**2)
+		return np.sqrt(ripple(self.motor.electrical.Lq)**2 + ripple(self.motor.electrical.Ld)**2)
 
 	@property
 	def phase_resistance(self):
 		return self.motor.resistance + self.controller.resistance * self.n_series
 
-	def heat_loss(self, rpm):
-		mps = rpm / 60 * self.motor.circumference
-		dT = 60#self.motor.magnet_temperature - 20
-		W = self.motor.thermal_resistance * dT * self.motor.circumference
-
-		# empirical scaling law of convective transfer between 2-20m/s
-		convection_scale = lambda v: 10.45 - v + 10 * np.sqrt(v)
-		# we assume 250w at 8m/s as an empirical value 200 convective and 50 radiative?
-		convection_loss = lambda v: convection_scale(v) / convection_scale(8) * 0.8
-		radiation_loss = 0.2
-		return (convection_loss(mps) + radiation_loss) * W
-
-	def heat_capacity(self, dT=40):
-		copper_cp = 0.376e3
-		return (self.motor.weight) * copper_cp * dT
-	def heat_capacity_stator(self, dT=40):
-		copper_cp = 0.376e3
-		return (self.motor.copper_weight + self.motor.iron_weight) * copper_cp * dT
-	def heat_capacity_copper(self, dT=40):
-		copper_cp = 0.376e3
-		return self.motor.copper_weight * copper_cp * dT
+	def temperatures(self, mps, rpm, copper_loss, iron_loss, dt, key='coils'):
+		"""build motor temp graphs from heat source/sink graphs"""
+		circumferential = rpm / 60 * self.motor.geometry.gap_circumference
+		def process_speed(i):
+			thermal = self.motor.thermal.replace(	# appropriately scale forced convection terms
+				conductivity__linear=mps[i],
+				conductivity__circumferential=circumferential[i]
+			)
+			# solve impulse responses
+			d_iron = thermal.solve({'stator': 1}, dt=dt)[key]
+			d_copper = thermal.solve({'coils': 1}, dt=dt)[key]
+			return d_iron * iron_loss[:, i] + d_copper * copper_loss[:, i]
+		return np.array([process_speed(i) for i in range(len(mps))]).T
 
 	def plot(self, ax=None):
 		"""graphical representation of motor and controller in relation"""
@@ -104,8 +97,11 @@ class Actuator(Base):
 
 		if ax is None:
 			fig, ax = plt.subplots(1, 1)
+			show=True
+		else:
+			show=False
 
-		self.motor.plot(ax=ax)
+		self.motor.geometry.plot(ax=ax)
 
 		def controller(w, h, r):
 			shaft_radius = r
@@ -119,4 +115,6 @@ class Actuator(Base):
 
 		controller(self.controller.width, self.controller.length, 12e-3)
 
+		if show:
+			plt.show()
 		return fig, ax

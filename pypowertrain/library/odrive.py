@@ -60,156 +60,117 @@ def micro():
 
 def D6374_150KV():
 	"""https://odriverobotics.com/shop/odrive-custom-motor-d6374-150kv"""
-	Kt = Kt_from_Kv(150)
-	R = 39e-3		# phase resistance
-	L = 24e-6		# line-to-neutral
-
-	R = R * 1.5		# convert to q-d frame
-	L = L * 1.5
-
-	return Motor(
-		Kt=Kt,
-		R=R,
-		Lq=L,
-		Ld=L,
-		H_limit=500,	# At/mm @ 100C
-
-		poles=7*2,
-		slots=4*3,
-
+	geometry = Geometry.create(
+		pole_pairs=7,
+		slot_triplets=4,
 		turns=5,			# FIXME: unknown!
-		radius=53e-3/2,
-		stack_height=64e-3,
-		tooth_depth=5e-3,	# visual approximate
 
-		# FIXME: all the below is barely considered guesswork!
-		magnet_height=2.5e-3,
-		airgap=0.8e-3,
+		gap_diameter=83e-3,
+		gap_length=25e-3,
+		slot_depth=7e-3,
+	)
 
-		thermal_resistance=10,
-		drag_1=0.003,  # intercept of drag; need to lower to meet no-load speed spec?
+	electrical = Electrical.from_absolute(
+		geometry=geometry,
+		Kv=150,
+		phase_to_neutral_R=39e-3,	# FIXME: same as 270kv? seems liek an error
+		phase_to_neutral_L=24e-6,
+	)
 
-		# weight=0.890,
-		# FIXME: wild guesses
-		iron_weight=0.4,
-		copper_weight=0.3,
-		magnet_weight=0.1,
-		structure_weight=0.09
+	mass = Mass.from_absolute(geometry=geometry, total=0.89)
+
+	thermal = basic_thermal(mass, K0=0.66)
+	return Motor(
+		electrical=electrical,
+		thermal=thermal,
+		mass=mass,
 	)
 
 
 def D5065_270KV():
 	"""https://odriverobotics.com/shop/odrive-custom-motor-d5065"""
-	Kt = Kt_from_Kv(270)
-	R = 39e-3		# phase resistance
-	L = 15.7e-6		# line-to-neutral
-
-	R = R * 1.5		# convert to q-d frame
-	L = L * 1.5
-
-	return Motor(
-		Kt=Kt,
-		R=R,
-		Lq=L,
-		Ld=L,
-		H_limit=500,	# At/mm @ 100C
-
-		poles=7*2,
-		slots=4*3,
-
+	geometry = Geometry.create(
+		pole_pairs=7,
+		slot_triplets=4,
 		turns=5,			# FIXME: unknown!
-		radius=43e-3/2,
-		stack_height=54e-3,
-		tooth_depth=5e-3,	# visual approximate
 
-		# FIXME: all the below is barely considered guesswork!
-		magnet_height=2.5e-3,
-		airgap=0.8e-3,
+		gap_diameter=83e-3,
+		gap_length=25e-3,
+		slot_depth=7e-3,
+	)
 
-		thermal_resistance=10,
-		drag_1 = 0.003,	# intercept of drag; need to lower to meet no-load speed spec?
+	electrical = Electrical.from_absolute(
+		geometry=geometry,
+		Kv=270,
+		phase_to_neutral_R=39e-3,
+		phase_to_neutral_L=15.7e-6,
+	)
 
-		# FIXME: wild guesses
-		# weight=0.420,
-		iron_weight=0.2,
-		copper_weight=0.15,
-		magnet_weight=0.05,
-		structure_weight=0.02
+	mass = Mass.from_absolute(geometry=geometry, total=0.42)
+
+	thermal = basic_thermal(mass, K0=0.66)
+	return Motor(
+		electrical=electrical,
+		thermal=thermal,
+		mass=mass,
 	)
 
 
 def M8325s_100KV():
-	Kt = Kt_from_Kv(100)
-	R = 24e-3		# phase-neutral resistance
-	L = 9.97e-6		# line-to-neutral
-
-	R = R * 1.5		# convert to q-d frame
-	L = L * 1.5
-
-	return Motor(
-		Kt=Kt,
-		R=R,
-		Lq=L,
-		Ld=L,
-
-		poles=20*2,
-		slots=12*3,
-
+	geometry = Geometry.create(
+		pole_pairs=20,
+		slot_triplets=12,
 		turns=5,			# FIXME: unknown!
-		radius=83e-3/2,
-		stack_height=25e-3,
-		tooth_depth=7e-3,	# visual approximate
 
-		# FIXME: all the below is barely considered guesswork!
-		magnet_height=2.5e-3,
-		airgap=0.8e-3,
+		gap_diameter=83e-3,
+		gap_length=25e-3,
+		slot_depth=7e-3,
+	)
 
-		thermal_resistance=10,
-		drag_1=0.003,  # intercept of drag; need to lower to meet no-load speed spec?
+	electrical = Electrical.from_absolute(
+		geometry=geometry,
+		Kv=100,
+		phase_to_neutral_R=24e-3,
+		phase_to_neutral_L=9.97e-6,
+		# d0=0.15, d1=0.0002,	# FIXME: set from dimensionless numbers?
+	)
 
-		# weight=0.840,
-		# FIXME: wild guesses
-		iron_weight=0.4,
-		copper_weight=0.3,
-		magnet_weight=0.04,
-		structure_weight=0.1
+	mass = Mass.from_absolute(geometry=geometry, total=2.2)
+
+	thermal = basic_thermal(mass, K0=0.66)
+	return Motor(
+		electrical=electrical,
+		thermal=thermal,
+		mass=mass,
 	)
 
 
 def botwheel():
 	"""https://odriverobotics.com/shop/botwheels"""
-	Kt = 0.951
-	R = 0.8		# phase-neutral resistance
-	L = 1.7e-3	# line-to-neutral
 
-	R = R * 1.5	# convert to q-d frame
-	L = L * 1.5
+	geometry = Geometry.create(
+		pole_pairs=15,
+		slot_triplets=9,
+		turns=12,
 
+		gap_diameter=130e-3,
+		gap_length=54e-3,
+		slot_depth_fraction=0.08, # weight matched
+	)
+
+	electrical = Electrical.from_absolute(
+		geometry=geometry,
+		Kt=0.951,
+		phase_to_neutral_R=0.8,
+		phase_to_neutral_L=1.7e-3,
+		# d0=0.15, d1=0.0002,	# FIXME: set from dimensionless numbers?
+	)
+
+	mass = Mass.from_absolute(geometry=geometry, total=2.2)
+
+	thermal = shelled_thermal(mass, tire=True)
 	return Motor(
-		Kt=Kt,
-		R=R,
-		Lq=L,
-		Ld=L,
-		H_limit=500,	# At/mm @ 100C
-
-		poles=15*2,
-		slots=9*3,
-
-		turns=12,			# FIXME: unknown!, but likely a high number
-		radius=150e-3/2,
-		stack_height=54e-3,
-		tooth_depth=5e-3,	# visual approximate
-
-		# FIXME: all the below is barely considered guesswork!
-		magnet_height=2.5e-3,
-		airgap=0.8e-3,
-
-		# FIXME: wild guesses
-		# weight=2.2,
-		iron_weight=1.0,
-		copper_weight=0.5,
-		magnet_weight=0.2,
-		structure_weight=0.5,
-
-		thermal_resistance=3.0,
+		electrical=electrical,
+		thermal=thermal,
+		mass=mass,
 	)

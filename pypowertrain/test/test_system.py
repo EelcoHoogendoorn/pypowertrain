@@ -1,6 +1,6 @@
 from pypowertrain.system import *
 from pypowertrain.components.battery import *
-from pypowertrain.library import grin
+from pypowertrain.library import grin, moteus, vesc, odrive
 
 
 def test_plot():

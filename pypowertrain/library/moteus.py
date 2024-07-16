@@ -52,38 +52,29 @@ def c1():
 
 def mj5208():
 	"""https://mjbots.com/products/mj5208"""
-	Kt = Kt_from_Kv(330)
-	R = 50e-3 # line to center
-	L = 30e-6 # line-to-neutral
+	geometry = Geometry.create(
+		pole_pairs=7,
+		slot_triplets=4,
+		# turns=5, # FIXME: unknown
 
-	R = R * 1.5		# convert to q-d frame
-	L = L * 1.5
+		gap_diameter=54e-3,
+		gap_length=8e-3,
+		slot_depth=6e-3,	# visual approximate
+	)
+
+	electrical = Electrical.from_absolute(
+		geometry=geometry,
+		Kv=330,
+		phase_to_neutral_R=50e-3,
+		phase_to_neutral_L=30e-6,
+		# d0=0.03, d1=0.00003,	# FIXME: tune iron losses?
+	)
+
+	# FIXME: make drone motor specific weight model?
+	mass = Mass.from_absolute(geometry=geometry, total=0.193)
 
 	return Motor(
-		Kt=Kt,
-		R=R,
-		Lq=L,
-		Ld=L,
-		H_limit=500,  # At/mm @ 100C
-
-		poles=7 * 2,
-		slots=4 * 3,
-
-		turns=5,  # FIXME: unknown!
-		radius=54e-3 / 2,
-		stack_height=8e-3,
-		tooth_depth=5e-3,  # visual approximate
-
-		# FIXME: all the below is barely considered guesswork!
-		magnet_height=2.5e-3,
-		airgap=0.7e-3,
-
-		thermal_resistance=9.0,
-
-		# FIXME: wild guesses
-		# weight=0.193,
-		iron_weight=0.08,
-		copper_weight=0.06,
-		magnet_weight=0.02,
-		structure_weight=0.043
+		electrical=electrical,
+		thermal=basic_thermal(mass, K0=1),
+		mass=mass,
 	)

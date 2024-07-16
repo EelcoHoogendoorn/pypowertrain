@@ -11,7 +11,6 @@ def test_cubemars_R100():
 
 	It seems their high rpm numbers are based on a thermal model
 	which is quite optimistic about iron losses to cooling rate at high rpm.
-	More optimistic than im comfortable being.
 	"""
 	print()
 	system = System(
@@ -48,11 +47,6 @@ def test_cubemars_RI100():
 
 def test_cubemars_RO100():
 	"""Test to see what it takes to approximate graph on the official store
-
-	We manage to reproduce their zero-load rpm numbers, and torque at nominal speed
-
-	Given peak torque seems to be around 30s as per our cooling estimates,
-	which could be?
 	"""
 	print()
 	system = System(

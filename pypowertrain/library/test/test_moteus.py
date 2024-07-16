@@ -4,7 +4,10 @@ from pypowertrain.components.battery import *
 
 
 def test_moteus_n1():
-	"""unlike the cubemars motors, maximum rpm seems conservatively estimated"""
+	"""Maximum rpm in the specs is just 70% of what this model predicts.
+	It might well be that the lack of rpm-dependent aero drag in our modelling thus far,
+	is starting to run into its limits here.
+	"""
 	system = System(
 		actuator=Actuator(
 			motor=moteus.mj5208(),

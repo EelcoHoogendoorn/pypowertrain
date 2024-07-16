@@ -13,6 +13,7 @@ def test_example(kmh=40, inch=24):
 		CdA=0.7 * 0.8,
 		Cr=0.004,
 		structure_weight=15,
+		rider_weight=80,
 		nominal_kmh=kmh,
 		wheel_diameter=inch * 25.4e-3
 	)
@@ -23,7 +24,7 @@ def test_moped():
 	"""limited to 40kmh with a single grin on empty battery
 	without optimizations braking could be better
 	"""
-	bike = define_moped(front=False)
+	bike = define_moped(front=True)
 
 	bike = bike.replace(
 		battery__charge_state=0.5
@@ -37,7 +38,7 @@ def test_motorcycle():
 
 	bike = bike.replace(
 		battery__charge_state=0.1,
-		rear__bus__length=10,
+		__bus__length=10,
 	)
 	bike_plot(bike)
 
