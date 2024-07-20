@@ -157,5 +157,7 @@ class Scaled(Base):
 	def __getitem__(self, item):
 		return self.get_attr(item)
 	# and attr-dict interface
-	def __getattr__(self, item):
-		return self.get_attr(item)
+	def __getattr__(self, attr):
+		if attr.startswith('__') and attr.endswith('__'):
+			raise AttributeError	# need this check to make pickle work
+		return self.get_attr(attr)

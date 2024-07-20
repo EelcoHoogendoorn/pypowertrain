@@ -15,20 +15,17 @@ class Geometry(Base):
 	# FIXME: should geometry itself be split into scaled attr dict?
 	#  think its kindof overcomplication
 
+	# FIXME: improve coherence; internally, prefer fractions or absolutes?
+
+	# FIXME: add stator tooth tip geometry considerations?
 	# absolute numbers
 	poles: int
 	slots: int
 
 	# in meters
-	gap_radius: float
+	em_width: float	# gap_circumference / slots
 	gap_length: float
-	# FIXME: rather than radius, make slots and loop_length fundamental attribute
-	#  gap_circumference = slots * loop_length
-	#  gap_radius = gap_circumference / pi
-	#  etc
-	#  axial_scale an planar_scale?
 
-	# FIXME: improve coherence; internally, prefer fractions or absolutes?
 
 	slot_depth_fraction: float	# fraction of gap radius
 	slot_width_fraction: float = 0.5  # tooth iron/copper ratio. or tooth_fraction?
@@ -42,6 +39,7 @@ class Geometry(Base):
 
 	structure_thickness: float = 3e-3	# outer shell and support structures
 	inrunner: bool = False
+	# freq: float = 1
 
 	@staticmethod
 	def create(
@@ -54,13 +52,15 @@ class Geometry(Base):
 		magnet_height=None, magnet_height_fraction=0.03,
 		magnet_width=None, magnet_width_fraction=0.9,
 		airgap=None, airgap_fraction=0.007,
-		inrunner=False,
+		**kwargs,
 	):
 		poles = poles or pole_pairs * 2
 		slots = slots or slot_triplets * 3
 		gap_radius = gap_radius or gap_diameter / 2
 		gap_diameter = gap_radius * 2
 		gap_circumference = gap_diameter * np.pi
+		em_width = gap_circumference / slots		# em flux path width
+
 		gap_length = gap_length or gap_diameter * aspect_ratio
 		magnet_height = magnet_height or magnet_height_fraction * gap_radius
 		magnet_width = magnet_width or magnet_width_fraction * gap_circumference / poles
@@ -70,15 +70,60 @@ class Geometry(Base):
 
 		return Geometry(
 			slots=slots, poles=poles,
-			gap_radius=gap_radius,
+			# gap_radius=gap_radius,
+			em_width=em_width,
 			gap_length=gap_length,
 			magnet_height=magnet_height,
 			slot_depth_fraction=slot_depth_fraction,
 			magnet_width_fraction=magnet_width_fraction,
 			airgap=airgap,
 			turns=turns,
-			inrunner=inrunner,
+			**kwargs,
 		)
+
+	# FIXME: turn these into independent setters?
+	def rescale(self,
+		length_scale=1,	# stack length
+		radius_scale=1,	# radius
+		turns_scale=1,	# turns
+		slot_depth_scale=1, 	# tooth depth
+		slot_width_scale=1, 	# tooth width
+		reluctance_scale=1, 	# reluctance scaling; magnet+airgap depth, at constant flux
+		frequency_scale=1,		# fractional rescaling of slots and poles, at constant gap radius
+		turns=None,
+		slot_depth=None,
+		gap_radius=None,
+		gap_length=None,
+	):
+		radius_scale = radius_scale if not gap_radius else gap_radius / self.gap_radius
+		return self.replace_norescale(
+			# gap_radius=gap_radius or self.gap_radius*radius_scale,
+			em_width=self.em_width*radius_scale/frequency_scale,	# FIXME: missing gap radius
+			gap_length=gap_length or self.gap_length*length_scale,
+			airgap=self.airgap*radius_scale*reluctance_scale,
+			magnet_height=self.magnet_height*radius_scale*reluctance_scale,
+			turns=turns or self.turns*turns_scale,
+			slot_depth_fraction=slot_depth/self.gap_radius if slot_depth else self.slot_depth_fraction*slot_depth_scale,
+			slot_width_fraction=self.slot_width_fraction * slot_width_scale,
+			poles=self.poles*frequency_scale,
+			slots=self.slots*frequency_scale,
+		)
+
+	@property
+	def gap_radius(self):
+		return self.gap_diameter / 2
+		# return c / 2 / np.pi
+	@property
+	def gap_diameter(self):
+		return self.gap_circumference / np.pi
+		# return self.gap_radius * 2
+	@property
+	def gap_circumference(self):
+		return self.em_width * self.slots
+		# return self.gap_diameter * np.pi
+	@property
+	def gap_area(self):
+		return self.gap_circumference * self.gap_length
 
 	@property
 	def radius(self):
@@ -94,15 +139,6 @@ class Geometry(Base):
 	def pole_pairs(self):
 		return self.poles / 2
 
-	@property
-	def gap_diameter(self):
-		return self.gap_radius * 2
-	@property
-	def gap_circumference(self):
-		return self.gap_diameter * np.pi
-	@property
-	def gap_area(self):
-		return self.gap_circumference * self.gap_length
 
 
 	@property
@@ -117,7 +153,9 @@ class Geometry(Base):
 	@property
 	def magnet_width(self):
 		return self.gap_circumference / self.poles * self.magnet_width_fraction
-
+	@property
+	def tooth_gap_area(self):
+		return self.em_width * self.length
 
 	@property
 	def back_iron_thickness(self):
@@ -138,56 +176,65 @@ class Geometry(Base):
 	# the point of them isnt to be accurate; but to scale appropriately
 	# specific motors can tune to their actual values with a dimensionless coefficient
 	@property
-	def tooth_volume(self):
-		tooth = self.tooth_width
-		A = tooth * self.slots * self.slot_depth
-		return A * self.gap_length
+	def tooth_area(self):
+		"""tooth side area"""
+		return self.tooth_width * self.slot_depth
+	@property
+	def teeth_area(self):
+		"""combined side area of all teeth"""
+		return self.tooth_area * self.slots
+	@property
+	def teeth_volume(self):
+		return self.teeth_area * self.gap_length
 	@property
 	def stator_volume(self):
 		b = self.back_iron_thickness * self.inner_radius * self.gap_length
-		return b + self.tooth_volume
+		return b + self.teeth_volume
 	@property
-	def tooth_area(self):
-		"""combined area of all teeth"""
-		return self.tooth_width * self.slots * self.slot_depth
-	@property
-	def slot_area(self):
+	def slots_area(self):
 		"""combined area of all slots"""
 		A = (self.gap_radius ** 2 - (self.gap_radius - self.slot_depth) ** 2) * np.pi
-		return A - self.tooth_area
+		return A - self.teeth_area
 	@property
-	def coil_contact_area(self):
+	def slot_area(self):
+		return self.slots_area / self.slots
+	@property
+	def coils_contact_area(self):
 		"""contact area of coils and stator"""
 		return self.length * self.slot_depth * self.slots
 	@property
 	def coil_thickness(self):
 		"""Average coil thickness as-wound around the tooth"""
-		As = self.slot_area
-		return As / self.slot_depth / 2 / self.slots
+		return self.slot_area / self.slot_depth / 2
 	@property
-	def coil_volume(self):	# m^3
+	def coils_volume(self):	# m^3
 		"""Full coil volume, without any fill-factors applied"""
-		As = self.slot_area
-		t = self.coil_thickness
-		L = (self.gap_length + t) * 2 + (self.tooth_width + t) * 2
-		return L * As
+		# As = self.slots_area
+		# t = self.coil_thickness
+		# L = (self.gap_length + t) * 2 + (self.tooth_width + t) * 2
+		# return L * As
+		return self.slots_area * (self.length + self.ew_length) * 2
 	@property
-	def coil_volume_fill(self):	# m^3
-		"""Actual volume occupied by actual wires"""
-		return self.coil_fill * self.coil_volume
+	def coils_volume_fill(self):	# m^3
+		"""Actual volume occupied by actual wires, all slots"""
+		return self.coil_fill * self.coils_volume
+	@property
+	def coils_area_fill(self):	# m^3
+		"""Actual area occupied by actual wires"""
+		return self.slots_area * self.coil_fill
 	@property
 	def coil_area_fill(self):	# m^3
 		"""Actual area occupied by actual wires"""
 		return self.slot_area * self.coil_fill
 	@property
-	def magnet_volume(self):
+	def magnets_volume(self):
 		return self.gap_area * self.magnet_height * self.magnet_width_fraction
 	@property
 	def back_volume(self):
 		return self.back_iron_thickness * self.outer_radius * self.gap_length
 	@property
 	def rotor_volume(self):
-		return self.back_volume + self.magnet_volume
+		return self.back_volume + self.magnets_volume
 	@property
 	def structure_volume(self):
 		# 2 outer plates, one interior hub plate?
@@ -202,29 +249,37 @@ class Geometry(Base):
 	def reluctance_length(self):
 		"""total amount of mu-0 reluctance in the circuit"""
 		return self.airgap + self.magnet_height
+
+	# FIXME: move below to electrical?
 	@property
-	def iron_field(self):
-		"""dimensionless iron flux density"""
-		return self.pm_flux / self.tooth_width
+	def iron_field_scale(self):
+		"""scaling factor proportional to iron field density"""
+		teeth_area = self.tooth_width * self.slots * self.gap_length
+		return self.pm_flux_scale / teeth_area
 	@property
-	def pm_flux(self):
-		"""pm flux scaling factor"""
-		return self.magnet_height * self.magnet_width / self.reluctance_length
+	def pm_flux_scale(self):
+		"""scaling factor proportional to total pm flux"""
+		return self.magnets_volume / self.reluctance_length
 		# https://www.e-magnetica.pl/doku.php/flux_fringing
 	@property
-	def em_flux(self):
+	def em_flux_scale(self):
 		"""em-flux per amp"""
-		mu0 = 1e-6
-		return self.turns / self.reluctance_length / mu0
+		mu0 = 1.256e-6
+		return self.turns / self.reluctance_length * (self.gap_area*0.9) * mu0
 
 	@property
 	def side_area(self):
 		"""side pate area"""
 		return self.outer_radius ** 2 * np.pi
 
+	@property
+	def ew_length(self):
+		"""end-winding length"""
+		return self.coil_thickness * 2 + self.tooth_width
+
 	def coil_ratios(self):
 		"""fraction of coils in slots vs end-turns"""
-		return loop_ratios(self.gap_length, self.tooth_width, self.slot_width/2)
+		return loop_ratios(self.gap_length, self.tooth_width, self.coil_thickness)
 	def flux_ratios(self):
 		"""Fraction of EM-flux through airgap vs fringing at end-turns"""
 		# FIXME: paper does not explain this, but should be about em flux through air gap,
@@ -232,36 +287,14 @@ class Geometry(Base):
 		#  calibrated to match Lew in numerical example in paper
 		return loop_ratios(
 			self.gap_area / self.reluctance_length,
-			self.tooth_area / self.slot_width / 4, 0)
+			self.teeth_area / self.slot_width / 4, 0)
 
+	def rpm_to_hz(self, rpm):
+		return rpm / 60
 	def rpm_to_electric_hz(self, rpm):
 		return rpm / 60 * self.pole_pairs
 	def rpm_to_electric_radians(self, rpm):
 		return self.rpm_to_electric_hz(rpm) * 2 * np.pi
-
-	# FIXME: turn these into independent setters?
-	def rescale(self,
-		length_scale=1,	# stack length
-		radius_scale=1,	# radius
-		turns_scale=1,	# turns
-		slot_depth_scale=1, 	# tooth depth
-		slot_width_scale=1, 	# tooth width
-		reluctance_scale=1, 	# reluctance scaling; magnet+airgap depth, at constant flux
-		turns=None,
-		slot_depth=None,
-		gap_radius=None,
-		gap_length=None,
-	):
-		# FIXME: add slot/pole scaling? need to add them to electric scaling laws too
-		return self.replace_norescale(
-			gap_radius=gap_radius or self.gap_radius*radius_scale,
-			gap_length=gap_length or self.gap_length*length_scale,
-			airgap=self.airgap*radius_scale*reluctance_scale,
-			magnet_height=self.magnet_height*radius_scale*reluctance_scale,
-			turns=turns or self.turns*turns_scale,
-			slot_depth_fraction=slot_depth/self.gap_radius if slot_depth else self.slot_depth_fraction*slot_depth_scale,
-			slot_width_fraction=self.slot_width_fraction * slot_width_scale,
-		)
 
 	def plot(self, ax=None):
 		assert self.inrunner is False		# FIXME: change this
@@ -306,6 +339,7 @@ class Geometry(Base):
 		radius = self.gap_radius
 		poles = self.poles
 		slots = self.slots
+		tip_depth = radius / 70
 
 		tooth_width, slot_width = self.tooth_width, self.slot_width
 		tooth_depth = self.slot_depth
@@ -325,15 +359,14 @@ class Geometry(Base):
 
 		tooth = square(
 			[radius, tooth_width/2],
-			[radius - tooth_depth, -tooth_width/2])
+			[radius - tooth_depth - tip_depth, -tooth_width/2])
 		geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tooth)
 		line_collection = LineCollection(geo, linewidths=2)
 		ax.add_collection(line_collection)
-		ax.plot(*circle(radius - tooth_depth))
-		ax.plot(*circle(radius - tooth_depth - iron_depth))
+		ax.plot(*circle(radius - tooth_depth - tip_depth))
+		ax.plot(*circle(radius - tooth_depth - tip_depth - iron_depth))
 
 		tip_width = tooth_width + slot_width / 2
-		tip_depth = 1e-3	# FIXME: move rotor outward!
 		tip = square(
 			[radius, tip_width/2],
 			[radius - tip_depth, -tip_width/2])
@@ -345,7 +378,7 @@ class Geometry(Base):
 		q = tooth_width + slot_width * geometric_fill_factor
 		gcoil = coil(
 			[radius - tip_depth, q / 2],
-			[radius - tooth_depth, -q / 2],
+			[radius - tooth_depth - tip_depth, -q / 2],
 			turns
 		)
 		colors = [

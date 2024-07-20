@@ -38,7 +38,7 @@ def test_fixture():
 	thermal = fixture(statorade=True)
 	geo = thermal.capacity.mass.geometry
 	print()
-	print(geo.coil_contact_area / geo.coil_thickness)
+	print(geo.coils_contact_area / geo.coil_thickness)
 	print(geo.side_area*2)
 	k = thermal.conductivity
 	print()

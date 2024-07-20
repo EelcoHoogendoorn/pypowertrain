@@ -47,13 +47,13 @@ def generic_capacity(mass: Mass):
 def basic_conductivity(geometry, K0, Kc, Kl, linear, circumferential):
 	# NOTE: triplets are constant, radial and linear velocity scaled components
 	attrs = {
-		'coils_stator': (200, ),	# generic big number; only seperate them because API calls for it
+		'coils_stator': (10, ),	# generic big number; only seperate them because API calls for it
 		'stator_air': (K0, K0+Kc, K0+Kl),
 	}
 
 	scalings = {
-		'coils_stator': {'coil_contact_area': 1, 'coil_thickness': -1},
-		'stator_air': {'coil_contact_area': 1},
+		'coils_stator': {'coils_contact_area': 1, 'coil_thickness': -1},
+		'stator_air': {'coils_contact_area': 1},
 	}
 
 	scalings, attrs = Conductivity.expand(scalings, attrs)
@@ -75,7 +75,7 @@ def basic_thermal(mass, K0, Kc=0, Kl=0, linear=40, circumferential=20):
 class ShelledConductivity(Conductivity):
 	"""Closed shell ebike style motor
 	minimal flow directly over the coils.
-	behavior is dominated by conduction to shell, and conduction out of shell
+	behavior is dominated by thermal resistance in and out of shell boundary layer
 	"""
 
 	@staticmethod
@@ -101,7 +101,7 @@ class ShelledConductivity(Conductivity):
 		rim = 0 if tire else 0.5	# 0.5 since only one rim
 		venting = 100 if vented else 0
 		w = 1 - block	# correction factor for blockage of free stream linear airflow
-
+		f = 1.0 if tire else 1.4		# flange factor
 		# w = 0.7
 		# stator->shell / r goes from 2.5 to 3.5 0-50kph
 		# shell->air r+v goes 4.5-14.5 0-50kph
@@ -129,14 +129,14 @@ class ShelledConductivity(Conductivity):
 			'rotor_shell': (iron_k,),
 			'inner_stator': (h0, h1),
 			'inner_shell': (h0, h1*0.6),
-			'shell_air': (h0*1.4, h1*1.4, h1*1.4*w),  # times scale factor for rim flanges
+			'shell_air': (h0*f, h1*f, h1*f*w),
 			'rotor_air': (h0*rim, h1*rim, h1*rim*w),
 			'inner_air': (venting, venting / 10 / 2, venting/10*w),
 			'stator_shell': (shell_radiation,),
 		}
 
 		scalings = {
-			'coils_stator': {'coil_contact_area': 1, 'coil_thickness': -1},
+			'coils_stator': {'coils_contact_area': 1, 'coil_thickness': -1},
 			'stator_rotor_air': {'gap_area': 1, 'airgap': -1},  # laminar flow
 			'stator_rotor_ff': {'gap_area': 1, 'airgap': -1},
 			'stator_rotor_rad': {'gap_area': 1},
@@ -178,11 +178,11 @@ class OpenConductivity(Conductivity):
 		}
 
 		scalings = {
-			'coils_stator': {'coil_contact_area': 1, 'coil_thickness': -1},
+			'coils_stator': {'coils_contact_area': 1, 'coil_thickness': -1},
 			'stator_rotor': {'gap_area': 1, 'airgap': -1},  # smaller gap means more mixing shear energy injected
 			'rotor_shell': {'gap_circumference': 1, 'back_iron_thickness': 1, 'length': -1},
-			'stator_air': {'coil_contact_area': 1},
-			'coil_air': {'coil_contact_area': 1},
+			'stator_air': {'coils_contact_area': 1},
+			'coil_air': {'coils_contact_area': 1},
 			'shell_air': {'side_area': 1},
 			'rotor_air': {'gap_area': 1},
 		}

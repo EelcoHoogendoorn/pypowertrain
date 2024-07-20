@@ -55,11 +55,15 @@ def mj5208():
 	geometry = Geometry.create(
 		pole_pairs=7,
 		slot_triplets=4,
-		# turns=5, # FIXME: unknown
+		turns=7, # fitted to dimensionless attrs
+		coil_fill=0.45,
+		slot_depth_fraction=0.4,
+		slot_width_fraction=0.4,
 
 		gap_diameter=54e-3,
 		gap_length=8e-3,
-		slot_depth=6e-3,	# visual approximate
+		magnet_height=3e-3,
+		# slot_depth=6e-3,	# visual approximate
 	)
 
 	electrical = Electrical.from_absolute(

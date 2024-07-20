@@ -31,8 +31,10 @@ def test_mass():
 	print(mass.rotor_inertia)
 	mass = mass.replace(geometry__slot_depth_scale=0.5)
 	print(mass.coils)
-	print(mass.total)
 	print(mass.rotor_inertia)
+	print(mass.total)
+	mass = mass.replace(geometry__frequency_scale=0.5)
+	print(mass.total)
 
 
 def test_util():

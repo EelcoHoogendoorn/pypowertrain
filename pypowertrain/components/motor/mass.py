@@ -28,7 +28,7 @@ class Mass(Scaled, Base):
 				}
 	):
 		scalings = {
-			'coils': {'coil_volume_fill': 1},
+			'coils': {'coils_volume_fill': 1},
 			'stator': {'stator_volume': 1},
 			'rotor': {'rotor_volume': 1},
 			'shell': {'structure_volume': 1},
@@ -68,65 +68,3 @@ class Mass(Scaled, Base):
 	def rotor_inertia(self):
 		# FIXME: shell mass
 		return self.geometry.outer_radius ** 2 * self.rotor
-
-
-# @dataclass
-# class Mass(Base):
-# 	# FIXME: have different subclasses, or presets, for frameless, vs ebike vs drone?
-# 	"""Motor mass model"""
-# 	geometry: Geometry
-#
-# 	# FIXME: reframe as general scaling model
-# 	_copper_weight: float
-# 	_stator_weight: float
-# 	_rotor_weight: float
-# 	_structure_weight: float
-#
-# 	@staticmethod
-# 	def from_absolute(
-# 		geometry,
-# 		weight,
-# 		# dimensionless tuning factor relative to standard simple volume*density
-# 		copper_weight=1,
-# 		stator_weight=1,
-# 		rotor_weight=1,
-# 		structure_weight=1,
-# 	):
-# 		"""break down parameters into dimensionless parts"""
-#
-# 		sv, cv, rv, qv = geometry.stator_volume, geometry.coil_volume, geometry.rotor_volume, geometry.structure_volume
-# 		sd, cd, rd, qd = iron_density * stator_weight, coil_density * copper_weight, iron_density*rotor_weight, alu_density*structure_weight
-# 		sm, cm, rm, qm = sv * sd, cv * cd, rv * rd, qv * qd
-# 		ms = sm + cm + rm + qm
-# 		t = weight / ms
-# 		sn, cn, rn, qn = sm*t/sv, cm*t/cv, rm*t/rv, qm*t/qv
-#
-# 		return Mass(
-# 			geometry=geometry,
-#
-# 			_copper_weight=cn,
-# 			_stator_weight=sn,
-# 			_rotor_weight=rn,
-# 			_structure_weight=qn,
-# 		)
-#
-# 	@property
-# 	def weight(self):
-# 		return self.copper_weight + self.stator_weight + self.rotor_weight + self.structure_weight
-# 	@property
-# 	def copper_weight(self):
-# 		return self._copper_weight * self.geometry.coil_volume
-# 	@property
-# 	def stator_weight(self):
-# 		return self._stator_weight * self.geometry.stator_volume
-# 	@property
-# 	def rotor_weight(self):
-# 		return self._rotor_weight * self.geometry.rotor_volume
-# 	@property
-# 	def structure_weight(self):
-# 		return self._structure_weight * self.geometry.structure_volume
-#
-# 	@property
-# 	def rotor_inertia(self):
-# 		# FIXME: shell mass
-# 		return self.geometry.outer_radius ** 2 * self.rotor_weight

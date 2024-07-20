@@ -31,6 +31,22 @@ class Electrical(Scaled, Base):
 	"""
 	geometry: Geometry
 
+	# adding these scalings gives us nondim values nice and close to unity
+	mu0: float = 1.256e-6
+	R0: float = 1.68e-8
+
+	@property
+	def coil_resistance(self):
+		"""Coil resistance per unit length"""
+		return self.R0 / self.geometry.coil_area_fill * 4	# x4, since going back and forth through same space
+	@property
+	def gap_reluctance(self):
+		return self.geometry.reluctance_length / self.mu0
+	@property
+	def slot_reluctance(self):
+		return self.geometry.slot_width / self.mu0
+
+
 	@staticmethod
 	def from_absolute(
 			geometry,
@@ -66,18 +82,22 @@ class Electrical(Scaled, Base):
 
 		if Kv:
 			Kt = Kt_from_Kv(Kv)
+		# FIXME: can we settle this once and for all?
+		# Kt = Kt * 1.5 / np.sqrt(3)
+		# Kt = Kt / 2 * 1.5 / np.sqrt(3)
 
 		if salience:
 			raise NotImplementedError
 
 		scalings = {
-			'R_co': {'turns': 2, 'length': 1, 'coil_area_fill': -1},
-			'R_ew': {'turns': 2, 'tooth_width': 1, 'coil_area_fill': -1},
-			'L_co': {'turns': 2, 'gap_area': 1, 'reluctance_length': -1},
-			'L_ew': {'turns': 2, 'tooth_area': 1, 'slot_width': -1},  # FIXME: 'slots': 1
-			'Kt': {'turns': 1, 'radius': 2, 'length': 1, 'pm_flux': 1},
-			'd_0': {'radius': 1, 'stator_volume': 1, 'iron_field': 1.8}, # NOTE: losses field dependence said to be between 1.6-2.0
-			'd_1': {'radius': 1, 'stator_volume': 1, 'iron_field': 1.8},#, 'omega': 1},  # FIXME: 'poles': 1
+			'Kt': {'turns': 1, 'radius': 1, 'pm_flux_scale': 1},
+			'R_co': {'turns': 2, 'length': 1, 'coil_resistance': 1, 'slots': 1},
+			'R_ew': {'turns': 2, 'ew_length': 1, 'coil_resistance': 1, 'slots': 1},
+			# FIXME: add phase wire lead fraction?
+			'L_co': {'turns': 2, 'tooth_gap_area': 1, 'gap_reluctance': -1, 'slots': 1},
+			'L_ew': {'turns': 2, 'tooth_area': 1, 'slot_reluctance': -1, 'slots': 1},
+			'd_0': {'radius': 1, 'stator_volume': 1, 'iron_field_scale': 1.8, 'poles': 1}, # NOTE: losses field dependence said to be between 1.6-2.0
+			'd_1': {'radius': 1, 'stator_volume': 1, 'iron_field_scale': 1.8, 'poles': 2}, # this scales with omega too; but we handle that in dedicated function now
 			# FIXME: define as multiplier on L_co?
 			# 'salience': {'turns': 2, 'radius': 1, 'reluctance_length': -1},	# same as Lco; no var relux at end of stack
 		}
@@ -98,17 +118,15 @@ class Electrical(Scaled, Base):
 
 		nondim_attrs = {}
 		if d0 is None:
-			# NOTE: these defaults are taken from grin data
-			nondim_attrs['d_0'] = 19e3
-			nondim_attrs['d_1'] = nondim_attrs['d_0'] / 370
+			# NOTE: these nondim defaults are taken from grin data
+			nondim_attrs['d_0'] = 348
+			nondim_attrs['d_1'] = 0.5
 		else:
 			attrs['d_0'] = d0
-			attrs['d_1'] = geometry.rpm_to_electric_radians(d1)
-
+			attrs['d_1'] = d1 * 60	# to rotor hz
 
 		return (Electrical.init(geometry=geometry, scaling=scalings, context=['geometry']).
 				from_dimensional(attrs).from_dimensionless(nondim_attrs))
-		# return Electrical.from_unscaled(geometry=geometry, scaling=scalings, context=['geometry'], attrs=attrs)
 
 	@property
 	def Kv(self): # rpm/V
@@ -131,4 +149,5 @@ class Electrical(Scaled, Base):
 	def Ld(self):
 		return self.L - self.salience
 	def iron_drag(self, omega):
+		"""omega in mechanical hz"""
 		return self.d_0 + self.d_1 * omega

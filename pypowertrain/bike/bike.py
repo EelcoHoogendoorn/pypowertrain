@@ -22,7 +22,7 @@ class Bike(Base):
 	cog_rear: float = 0.5
 	cog_front: float = 0.5
 
-	Cf: float = 0.6
+	Cf: float = 0.6		# wet road
 
 	@property
 	def wheelbase(self):
@@ -214,6 +214,10 @@ def bike_plot(
 	def default_annotate():
 		# delineate FW-region
 		contour(Id, levels=[-1], colors='white')
+
+		# V = system.battery.voltage *0.9 - rpm / system.actuator.motor.electrical.Kv
+		# A = V * system.actuator.controller.modulation_factor / system.actuator.motor.R
+		# plt.plot(kph, A*system.actuator.motor.electrical.Kt)
 
 		plt.plot(kph, kph * 0, c='gray')
 		plt.plot(np.ones_like(trange) * bike.nominal_kmh, trange, c='gray')

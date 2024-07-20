@@ -18,14 +18,13 @@ def test_grin():
 	print(system.actuator.motor.R)
 	print(system.actuator.motor.L*1000)
 	print('dimensionless drag')
-	print('field', system.actuator.motor.geometry.iron_field)
-	print(system.actuator.motor.electrical.attrs['d_0'])
-	print(system.actuator.motor.electrical.attrs['d_1'])
-	print(system.actuator.motor.electrical.d_0/system.actuator.motor.electrical.d_1)
+	print('field', system.actuator.motor.geometry.iron_field_scale)
+	d0=(system.actuator.motor.electrical.attrs['d_0'])
+	d1=(system.actuator.motor.electrical.attrs['d_1'])
+	print(d0, d1, d0 / d1)
+	print(system.actuator.motor.electrical.d_0,system.actuator.motor.electrical.d_1)
 	print(system.actuator.motor.electrical.attrs)
-
-
-# system_plot(system)
+	system.actuator.plot()
 
 
 def test_drag():
@@ -38,6 +37,17 @@ def test_drag():
 	motor = grin.all_axle()
 	f = motor.mass.stator * motor.mass.geometry.gap_radius
 	print(0.453/f, 0.00052/f)
+	import matplotlib.pyplot as plt
+	kmh = np.linspace(0, 50, 100)
+	rpm = kmh * 10
+	drag =motor.electrical.iron_drag(rpm/60)
+	print(motor.electrical.d_1)
+	plt.plot(kmh, drag)
+	motor = motor.replace(frequency_scale=0.8)
+	print(motor.electrical.d_1)
+	drag =motor.electrical.iron_drag(rpm/60)
+	plt.plot(kmh, drag)
+	plt.show()
 
 
 def test_thermal_resistance():

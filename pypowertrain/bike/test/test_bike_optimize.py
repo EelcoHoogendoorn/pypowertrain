@@ -31,19 +31,19 @@ def test_moped():
 	target_torque = [-75] * n
 	target_rpm = list(np.linspace(rated_rpm * 0.5, rated_rpm * 1.0, n, endpoint=True))
 	target_dissipation = [5000] * n
-	target_weight = [3,4,5]
+	target_weight = [(0,1)]*3
 
 	# top speed capability
 	target_torque += [20 / bike.n_motors]
 	target_rpm += [rated_rpm]
 	target_dissipation += [250]
-	target_weight += [10]
+	target_weight += [(1,1)]
 
 	# decent hill climbing ability
 	target_torque += [60 / bike.n_motors]
 	target_rpm += [rated_rpm*0.8]
 	target_dissipation += [250]
-	target_weight += [5]
+	target_weight += [(1,1)]
 
 	conditions = [
 		{

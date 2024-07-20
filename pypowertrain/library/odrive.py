@@ -151,11 +151,13 @@ def botwheel():
 	geometry = Geometry.create(
 		pole_pairs=15,
 		slot_triplets=9,
-		turns=12,
+		turns=12,	# matched via dimensionless comparison
 
 		gap_diameter=130e-3,
 		gap_length=54e-3,
-		slot_depth_fraction=0.08, # weight matched
+		airgap=0.6e-3,
+		magnet_height=1e-3,
+		slot_depth_fraction=0.08,  # weight matched
 	)
 
 	electrical = Electrical.from_absolute(
@@ -163,10 +165,9 @@ def botwheel():
 		Kt=0.951,
 		phase_to_neutral_R=0.8,
 		phase_to_neutral_L=1.7e-3,
-		# d0=0.15, d1=0.0002,	# FIXME: set from dimensionless numbers?
 	)
 
-	mass = Mass.from_absolute(geometry=geometry, total=2.2)
+	mass = Mass.from_absolute(geometry=geometry, total=2.2-0.2)	# subtract rubber wheel?
 
 	thermal = shelled_thermal(mass, tire=True)
 	return Motor(

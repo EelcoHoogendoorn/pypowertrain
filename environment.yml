@@ -8,3 +8,12 @@ dependencies:
   - scipy >= 1.9
   - matplotlib
   - pytest
+  - scikit-image
+
+  - plotly
+  - pandas
+  - xarray
+  - ipywidgets
+  - dash
+  - jsonpickle
+  - dash-bootstrap-components

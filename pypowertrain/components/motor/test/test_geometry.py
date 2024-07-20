@@ -3,22 +3,29 @@ from pypowertrain.components.motor.geometry import Geometry, winding
 
 
 def test_geometry():
-	geo = Geometry(
+	geo = Geometry.create(
 		poles=46,
 		slots=42,
 		turns=5,
 
-		gap_radius=199e-3 / 2,
+		gap_diameter=199e-3,
 		gap_length=27e-3,
 		slot_depth_fraction=0.16,
 		magnet_height=3e-3,
-		airgap=0.8e-3,
+		airgap=0.7e-3,
 	)
 	# geo.replace(slot_width_fraction=0.4).plot()
 	print(geo)
 
 	print(list(expand_paths('turns', geo)))
 	print(geo.flux_ratios())
+	print(geo.pm_flux_scale)
+	print(geo.em_flux_scale*(150/1.0))
+	# at 150A/nm, we are still under 1/3 of pm flux
+	# pythagoras summing q and d fluxes total is only 5% more, at 150nm
+	print(geo.iron_field_scale * 1.39) # *1.39 for typical closed loop neo strength; indeed around 2T
+	# geo = geo.rescale(frequency_scale=2)
+	# geo.plot()
 
 
 def test_L():
