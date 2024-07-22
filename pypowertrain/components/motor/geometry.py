@@ -346,8 +346,15 @@ class Geometry(Base):
 			geo = [[p[1:], b*g[0, 1]], [p[:-1], b*g[1,1]]]
 			return np.moveaxis(np.array(geo), 2, 0)
 
-		def halftooth(r, tip_width, tooth_width, tooth_depth):
+		def halftooth(r, tip_width, tooth_width, em_width, tooth_depth, tip_depth):
 			"""construct tooth lines"""
+			ro = r
+			ri = r - tooth_depth - tip_depth
+			ao = 0, tip_width / ro
+			outer = rotate(np.linspace(*ao, 3, endpoint=True)[1:], [r, 0])
+			ai = tooth_width / ri, em_width / ro
+			inner = rotate(np.linspace(*ai, 3, endpoint=True), [ri, 0])
+			return list(outer) + [[r - tip_depth, tooth_width]] + list(inner)
 
 		def circle(r, n=360):
 			a = np.linspace(0, np.pi*2, n+1, endpoint=True)
@@ -359,6 +366,8 @@ class Geometry(Base):
 		poles = pole_pairs * 2
 		slot_triplets = int(self.slots / 3)
 		slots = slot_triplets * 3
+		em_width = self.em_width
+		tip_width = em_width * 0.75
 		tip_depth = radius / 70	# FIXME: make this a legit property?
 
 		tooth_width, slot_width = self.tooth_width, self.slot_width
@@ -381,21 +390,25 @@ class Geometry(Base):
 		collections.append({'segments': [circle(rradius + self.airgap + self.magnet_height, poles)]})
 		collections.append({'segments': [circle(rradius + self.airgap + self.magnet_height + iron_depth, poles)]})
 
-		tooth = square(
-			[radius, tooth_width/2],
-			[radius - tooth_depth - tip_depth, -tooth_width/2])
+		tooth = halftooth(radius, tip_width/2, tooth_width/2, em_width/2, tooth_depth, tip_depth)
+		tooth = list(np.array(tooth)*[1, -1])[::-1] + tooth
 		geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tooth)
-		collections.append({'segments': geo, 'linewidths':2})
-
-		collections.append({'segments': [circle(radius - tooth_depth - tip_depth)]})
+		collections.append({'segments': geo})
 		collections.append({'segments': [circle(radius - tooth_depth - tip_depth - iron_depth)]})
-
-		tip_width = tooth_width + slot_width / 2
-		tip = square(
-			[radius, tip_width/2],
-			[radius - tip_depth, -tip_width/2])
-		geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tip)
-		collections.append({'segments': geo, 'linewidths':2})
+		# tooth = square(
+		# 	[radius, tooth_width/2],
+		# 	[radius - tooth_depth - tip_depth, -tooth_width/2])
+		# geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tooth)
+		# collections.append({'segments': geo, 'linewidths':2})
+		#
+		# collections.append({'segments': [circle(radius - tooth_depth - tip_depth)]})
+		#
+		# tip_width = tooth_width + slot_width / 2
+		# tip = square(
+		# 	[radius, tip_width/2],
+		# 	[radius - tip_depth, -tip_width/2])
+		# geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tip)
+		# collections.append({'segments': geo, 'linewidths':2})
 
 		try:
 			a = np.linspace(0, np.pi * 2, slots, endpoint=False)

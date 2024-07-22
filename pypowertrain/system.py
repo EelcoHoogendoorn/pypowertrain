@@ -316,7 +316,7 @@ def system_dash(
 		html.Label('Plot types'),
 		dcc.Checklist(options=plot_types, value=plot_types, id='plot-type-list'),
 		html.Label('Plot image'),
-		dcc.Dropdown(plots, 'dissipation', id='dropdown-selection'),
+		dcc.Dropdown(plots, 'acceleration', id='dropdown-selection'),
 		html.Label('Plot overlays'),
 		dcc.Checklist(options=overlays, value=overlays, id='check-overlay', labelStyle={'display': 'block'},),
 		html.Label('Automatic plot bound rescaling'),
@@ -331,7 +331,7 @@ def system_dash(
 	graph_tab = dbc.Tab(label='Graph', children=[
 		dcc.Graph(
 			id='graph-content',
-			style={"width": "100%", "height": "100vh"},
+			style={"width": "100%", "height": "90vh"},
 			responsive=True,
 		),
 	])
