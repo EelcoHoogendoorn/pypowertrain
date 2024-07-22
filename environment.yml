@@ -9,6 +9,7 @@ dependencies:
   - matplotlib
   - pytest
   - scikit-image
+  - jupyter
 
   - plotly
   - pandas
