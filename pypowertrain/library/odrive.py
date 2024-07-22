@@ -117,10 +117,11 @@ def D5065_270KV():
 
 
 def M8325s_100KV():
+	"""https://odriverobotics.com/shop/m8325s"""
 	geometry = Geometry.create(
 		pole_pairs=20,
 		slot_triplets=12,
-		turns=5,			# FIXME: unknown!
+		turns=2,			# FIXME: unknown!
 
 		gap_diameter=83e-3,
 		gap_length=25e-3,
@@ -129,13 +130,12 @@ def M8325s_100KV():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		Kv=100,
+		Kv=100,			# FIXME: data entry problem? we struggle to match realistic values here in test_compare
 		phase_to_neutral_R=24e-3,
 		phase_to_neutral_L=9.97e-6,
-		# d0=0.15, d1=0.0002,	# FIXME: set from dimensionless numbers?
 	)
 
-	mass = Mass.from_absolute(geometry=geometry, total=2.2)
+	mass = Mass.from_absolute(geometry=geometry, total=0.840)
 
 	thermal = basic_thermal(mass, K0=0.66)
 	return Motor(

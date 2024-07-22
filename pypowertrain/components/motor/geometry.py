@@ -297,10 +297,32 @@ class Geometry(Base):
 		return self.rpm_to_electric_hz(rpm) * 2 * np.pi
 
 	def plot(self, ax=None):
-		assert self.inrunner is False		# FIXME: change this
-		"""graphical representation of motor proportions"""
 		import matplotlib.pyplot as plt
 		from matplotlib.collections import LineCollection
+		if ax is None:
+			show = True
+			fix, ax = plt.subplots(1, 1)
+		else:
+			show = False
+		plt.sca(ax)
+
+		for g in self.plot_geometry():
+			ax.add_collection(LineCollection(**g))
+
+		r = self.outer_radius * 1.1
+		plt.xlim(-r, +r)
+		plt.ylim(-r, +r)
+		plt.axis('equal')
+		if show:
+			plt.show()
+
+
+	def plot_geometry(self):
+		"""graphical representation of motor proportions
+
+		Returns: List[dict] of mpl.LineCollection compatible inputs
+		"""
+		assert self.inrunner is False		# FIXME: change this; not that much work
 
 		def rotate(angles, geo):
 			c, s = np.cos(angles), np.sin(angles)
@@ -320,26 +342,24 @@ class Geometry(Base):
 		def coil(s, e, n):
 			g = np.array([s, e])
 			p = np.linspace(g[0, 0], g[1, 0], n+1)
-			b =np.ones(n)
+			b = np.ones(n)
 			geo = [[p[1:], b*g[0, 1]], [p[:-1], b*g[1,1]]]
 			return np.moveaxis(np.array(geo), 2, 0)
+
+		def halftooth(r, tip_width, tooth_width, tooth_depth):
+			"""construct tooth lines"""
 
 		def circle(r, n=360):
 			a = np.linspace(0, np.pi*2, n+1, endpoint=True)
 			a+=a[1]/2
-			return np.array([np.cos(a), np.sin(a)]) * r
-
-		if ax is None:
-			show = True
-			fix, ax = plt.subplots(1, 1)
-		else:
-			show = False
-		plt.sca(ax)
+			return np.array([np.cos(a), np.sin(a)]).T * r
 
 		radius = self.gap_radius
-		poles = self.poles
-		slots = self.slots
-		tip_depth = radius / 70
+		pole_pairs = int(self.pole_pairs)
+		poles = pole_pairs * 2
+		slot_triplets = int(self.slots / 3)
+		slots = slot_triplets * 3
+		tip_depth = radius / 70	# FIXME: make this a legit property?
 
 		tooth_width, slot_width = self.tooth_width, self.slot_width
 		tooth_depth = self.slot_depth
@@ -348,57 +368,82 @@ class Geometry(Base):
 		magnet_width = self.magnet_width
 		turns = int(self.turns)
 
+		collections = []
+
 		magnet = square(
 			[radius + self.airgap + self.magnet_height, magnet_width/2],
 			[radius + self.airgap, -magnet_width/2])
 		geo = rotate(np.linspace(0, np.pi*2, poles, endpoint=False), magnet)
-		line_collection = LineCollection(geo, linewidths=2, colors=['r', 'b']*(poles//2))
-		ax.add_collection(line_collection)
-		ax.plot(*circle(radius + self.airgap + self.magnet_height, poles))
-		ax.plot(*circle(radius + self.airgap + self.magnet_height + iron_depth, poles))
+		collections.append({'segments': geo, 'linewidths':2, 'colors': ['red', 'blue']*(poles//2)})
+
+		# eps = np.arctan(np.arcsin(magnet_width / self.gap_diameter))
+		rradius = np.sqrt(magnet_width**2+self.gap_diameter**2)/2
+		collections.append({'segments': [circle(rradius + self.airgap + self.magnet_height, poles)]})
+		collections.append({'segments': [circle(rradius + self.airgap + self.magnet_height + iron_depth, poles)]})
 
 		tooth = square(
 			[radius, tooth_width/2],
 			[radius - tooth_depth - tip_depth, -tooth_width/2])
 		geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tooth)
-		line_collection = LineCollection(geo, linewidths=2)
-		ax.add_collection(line_collection)
-		ax.plot(*circle(radius - tooth_depth - tip_depth))
-		ax.plot(*circle(radius - tooth_depth - tip_depth - iron_depth))
+		collections.append({'segments': geo, 'linewidths':2})
+
+		collections.append({'segments': [circle(radius - tooth_depth - tip_depth)]})
+		collections.append({'segments': [circle(radius - tooth_depth - tip_depth - iron_depth)]})
 
 		tip_width = tooth_width + slot_width / 2
 		tip = square(
 			[radius, tip_width/2],
 			[radius - tip_depth, -tip_width/2])
 		geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tip)
-		line_collection = LineCollection(geo, linewidths=2)
-		ax.add_collection(line_collection)
+		collections.append({'segments': geo, 'linewidths':2})
 
-		a = np.linspace(0, np.pi * 2, slots, endpoint=False)
-		q = tooth_width + slot_width * geometric_fill_factor
-		gcoil = coil(
-			[radius - tip_depth, q / 2],
-			[radius - tooth_depth - tip_depth, -q / 2],
-			turns
-		)
-		colors = [
-			["salmon", "darkmagenta", "green"],
-			["lightsalmon", "magenta", "lightgreen"]
-		]
-		polarity, phase, wf, balance = winding(poles, slots)
-		colors = np.array(colors)[polarity, phase]
+		try:
+			a = np.linspace(0, np.pi * 2, slots, endpoint=False)
+			q = tooth_width + slot_width * geometric_fill_factor
+			gcoil = coil(
+				[radius - tip_depth, q / 2],
+				[radius - tooth_depth - tip_depth, -q / 2],
+				turns
+			)
+			# colors = [
+			# 	["salmon", "darkmagenta", "green"],
+			# 	["lightsalmon", "magenta", "lightgreen"]
+			# ]
+			colors = [
+				["#FF0000", "#00FF00", "#0000FF"],
+				["#AA0000", "#00AA00", "#0000AA"]
+			]
+			polarity, phase, wf, balance = winding(poles, slots)
+			colors = np.array(colors)[polarity, phase]
 
-		geo = np.where(polarity, rotate(a, gcoil).T, rotate(a, gcoil * [1, -1]).T).T
-		geo = np.reshape(geo, (-1, ) + geo.shape[-2:])
-		colors = np.repeat(colors, turns)
-		line_collection = LineCollection(geo, linewidths=2, color=colors)
-		ax.add_collection(line_collection)
+			geo = np.where(polarity, rotate(a, gcoil).T, rotate(a, gcoil * [1, -1]).T).T
+			geo = np.reshape(geo, (-1, ) + geo.shape[-2:])
+			colors = [str(f) for f in np.repeat(colors, turns)]
+			collections.append({'segments': geo, 'linewidths': 2, 'colors': colors})
+		except:
+			pass
+		return collections
 
-		plt.xlim(-radius*1.1, +radius*1.1)
-		plt.ylim(-radius*1.1, +radius*1.1)
-		plt.axis('equal')
-		if show:
-			plt.show()
+
+@dataclass
+class Toroidal(Geometry):
+	coil_fill: float = 0.8
+
+	@property
+	def ew_length(self):
+		"""end-winding length"""
+		return self.coil_thickness * 2 + self.back_iron_thickness
+	@property
+	def coils_contact_area(self):
+		"""contact area of coils and stator"""
+		return self.length * self.slot_width * self.slots
+	@property
+	def coil_thickness(self):
+		"""Average coil thickness as-wound around the back iron"""
+		return self.slot_depth
+
+	# FIXME would only need to redef coils for plotting generality?
+
 
 
 def winding(poles, slots, phases=3):

@@ -16,6 +16,7 @@ def test_geometry():
 	)
 	# geo.replace(slot_width_fraction=0.4).plot()
 	print(geo)
+	geo.plot()
 
 	print(list(expand_paths('turns', geo)))
 	print(geo.flux_ratios())
@@ -25,7 +26,6 @@ def test_geometry():
 	# pythagoras summing q and d fluxes total is only 5% more, at 150nm
 	print(geo.iron_field_scale * 1.39) # *1.39 for typical closed loop neo strength; indeed around 2T
 	# geo = geo.rescale(frequency_scale=2)
-	# geo.plot()
 
 
 def test_L():

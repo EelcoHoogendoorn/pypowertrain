@@ -23,10 +23,5 @@ def test_dash():
 			__geometry__radius_scale=1.00,
 		)
 	)
-	print(system)
-	# import pickle
-	# print(type(str(pickle.dumps(system))))
-	# foo  = (pickle.loads( pickle.dumps(system)))
-	# system_plot(foo)
-	# return
-	system_dash(system)
+	app = system_dash(system)
+	app.run(debug=False)

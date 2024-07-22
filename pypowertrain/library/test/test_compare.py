@@ -23,6 +23,7 @@ def test_compare():
 	print(grin.all_axle(turns=5).electrical.attrs)
 	print(grin.all_axle(turns=8).electrical.attrs)
 	print(odrive.botwheel().electrical.attrs)
+	print(odrive.M8325s_100KV().electrical.attrs)
 	print(moteus.mj5208().electrical.attrs)
 	print(cubemars.RO100().electrical.attrs)
 
