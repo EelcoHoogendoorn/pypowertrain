@@ -1,6 +1,5 @@
 name: pypowertrain
 channels:
-  - anaconda
   - conda-forge
 dependencies:
   - python
