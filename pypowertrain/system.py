@@ -7,35 +7,48 @@ from pypowertrain.components.battery import Battery
 
 
 @dataclass
-class System(Base):
-	"""Simple battery-controller-motor system"""
-	battery: Battery
-	actuator: Actuator
-
-	@property
-	def weight(self):
-		return self.battery.weight + self.actuator.weight
-
-	@property
-	def inertia(self):
-		# FIXME: move to actuator?
-		return self.actuator.motor.mass.rotor_inertia * self.actuator.gearing.ratio ** 2 # gear-reflected inertia
+class Load(Base):
 
 	def load(self, rpm):
 		"""override"""
 		# by default, lets have only a light aero drag on the output shaft
 		f = rpm / 1000
 		return f * np.abs(f)
+	@property
+	def inertia(self):
+		return 0
+	@property
+	def weight(self):
+		return 0
+
+
+@dataclass
+class System(Base):
+	"""Simple battery-controller-motor system"""
+	battery: Battery
+	actuator: Actuator
+	load: Load = Load()
+
+	@property
+	def weight(self):
+		return self.battery.weight + self.actuator.weight + self.load.weight
+
+	@property
+	def inertia(self):
+		# FIXME: move to actuator?
+		# gear-reflected inertia
+		actuator_inertia = self.actuator.motor.mass.rotor_inertia * self.actuator.gearing.ratio ** 2
+		return actuator_inertia + self.load.inertia
+
 
 	def acceleration(self, rpm, torque):
-		net = torque - self.load(rpm)
+		net = torque - self.load.load(rpm)
 		return net / self.inertia
 
 	def x_axis(self, rpm=0):
 		return 'rpm', rpm
 	def y_axis(self, nm=0):
 		return 'Nm', nm
-
 
 
 def system_limits(
@@ -183,7 +196,7 @@ def calc_stuff(system, rpm_range, torque_range, thermal_specs):
 def system_dash(
 	system: System,
 	n_rpm=50,
-	n_torque=50,
+	n_torque=51,
 	max_rpm=None,
 	max_torque=None,
 	targets=None,
@@ -210,7 +223,7 @@ def system_dash(
 
 	import jsonpickle
 	import jsonpickle.ext.numpy as jsonpickle_numpy
-	jsonpickle_numpy.register_handlers()
+	jsonpickle_numpy.register_handlers(ndarray_mode='ignore')
 
 	import pickle	# fixme: can we drop pickle for json here? perhaps some small changes to Base dataclass?
 	import codecs
@@ -226,7 +239,6 @@ def system_dash(
 	frequency_tooltip = "Scaling of the number of poles and slots, at equal gap radius. Note that these fractional scalings are generally not realizable; but adjusting this value should give quite an accurate idea, if your application would benefit from a motor with a different pole count."
 	# flux_tooltip = 'Flux scaling, at equal field density. This increases magnet volume and tooth width, at equal iron field level'
 
-	# FIXME: why is editor not working?
 	thermal_specs = [
 		{'color': 'yellow', 'dt': 5000, 'dT': 60},
 		{'color': 'orange', 'dt': 60, 'dT': 60},
@@ -253,6 +265,7 @@ def system_dash(
 		'Acceleration',
 	]
 	plot_types = ['Geometry', 'Graph']
+
 	app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 	thermal_table = dash_table.DataTable(
@@ -267,7 +280,8 @@ def system_dash(
 	# stats_table = dash_table.DataTable()
 
 	# FIXME: make swappable through subclass. make bike a load-type on system?
-	system_tab = dbc.Tab(label='System', children=[
+	#  enumerate load dataclass fields to autogenerate?
+	load_tab = dbc.Tab(label='Load', children=[
 		html.Label('Inertia (Kg m^2)'),
 		dcc.Slider(0, 100, 10, value=0, id='weight-slider'),
 		html.Label('Drag (Nm / s)'),
@@ -311,6 +325,8 @@ def system_dash(
 		html.Label('Controller'),
 		dcc.Dropdown(list(controllers.keys()), 'odrive.pro', id='dropdown-controller'),
 		dcc.Checklist(options=['Field weakening'], value=['Field weakening'], id='field-weakening'),
+		html.Label('Number of controllers'),
+		dcc.Slider(1, 5, 1, value=system.actuator.n_series, id='n_series-slider'),
 	])
 	visual_tab = dbc.Tab(label='Visual', children=[
 		html.Label('Plot types'),
@@ -359,7 +375,7 @@ def system_dash(
 						motor_tab,
 						battery_tab,
 						controller_tab,
-						system_tab,
+						load_tab,
 						visual_tab,
 					]),
 					width=4,
@@ -392,12 +408,12 @@ def system_dash(
 
 		Input('dropdown-controller', 'value'),
 		Input('field-weakening', 'value'),
-
+		Input('n_series-slider', 'value')
 	)
 	def compute_handler_system(
 			motor, turns, radius, slot_depth, length, slot_width, reluctance, frequency,
 			charge, P, S,
-			controller, field_weakening,
+			controller, field_weakening, n_series
 	):
 		"""Put all modifiers to the system object here"""
 		# FIXME: place base object selection upstream?
@@ -416,6 +432,7 @@ def system_dash(
 			battery__P=P,
 			battery__S=S,
 			__controller__field_weakening=bool(field_weakening),
+			actuator__n_series=n_series,
 		)
 		return codecs.encode(pickle.dumps(sysr), "base64").decode()
 
@@ -427,10 +444,10 @@ def system_dash(
 	def compute_handler_actuator_weight(system):
 		system = pickle.loads(codecs.decode(system.encode(), "base64"))
 		return \
-			f'Mass:\t {system.actuator.motor.mass.total:0.3f} kg\n' \
-			f'Kt:\t\t {system.actuator.motor.electrical.Kt:0.3f} Nm/A\n' \
-			f'R: \t\t {system.actuator.motor.electrical.R:0.3f} ohm\n' \
-			f'L: \t\t {system.actuator.motor.electrical.L*1000:0.3f} mH'
+			f'Mass:\t {system.actuator.motor.mass.total:0.3f} \tkg\n' \
+			f'Kt:\t\t {system.actuator.motor.electrical.Kt:0.3f} \tNm/A\n' \
+			f'R: \t\t {system.actuator.motor.electrical.R:0.3f} \tohm\n' \
+			f'L: \t\t {system.actuator.motor.electrical.L*1000:0.3f} \tmH'
 
 
 	@callback(
@@ -443,6 +460,7 @@ def system_dash(
 
 	@callback(
 		Output('ranges', 'data'),
+
 		Input('system', 'data'),
 		Input('rescale', 'value'),
 		Input('resolution-slider', 'value'),
@@ -455,8 +473,8 @@ def system_dash(
 		if rescale:
 			sysr = pickle.loads(codecs.decode(sysr.encode(), "base64"))
 			max_rpm, max_torque = system_detect_limits(sysr, fw=2)
-			rpm_range = np.linspace(0, max_rpm, _n_rpm + 1, endpoint=True)
-			torque_range = np.linspace(-max_torque, +max_torque, _n_torque + 1, endpoint=True)
+			rpm_range = np.linspace(0, max_rpm, _n_rpm, endpoint=True)
+			torque_range = np.linspace(-max_torque, +max_torque, _n_torque, endpoint=True)
 			return jsonpickle.dumps((rpm_range, torque_range))
 
 		return dash.no_update
@@ -527,9 +545,15 @@ def system_dash(
 	def update_graph(plot_key, overlay_data, data, ranges, plot_types):
 		if not 'Graph' in plot_types: return go.Figure()
 
-		things, thermals = jsonpickle.loads(data)
-		copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = things
 		rpm_range, torque_range = jsonpickle.loads(ranges)
+		things, thermals = jsonpickle.loads(data)
+
+		copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = things
+		dissipation = copper_loss + iron_loss
+
+		# efficiency = 1 - dissipation / np.abs(bus_power)
+		efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
+		acceleration = system.acceleration(rpm_range, torque)
 
 		x, X = system.x_axis(rpm_range)
 		y, Y = system.y_axis(torque_range)
@@ -563,12 +587,6 @@ def system_dash(
 						showlegend=False, name=name,
 					))
 
-		efficiency = np.where(
-			torque >= 0,
-			np.abs(mechanical_power) / np.abs(bus_power),
-			np.abs(bus_power) / np.abs(mechanical_power)
-		)
-		acceleration = system.acceleration(rpm_range, torque)
 
 		if plot_key == 'efficiency':
 			# FIXME: add custom color scale with high contrast at the high end
@@ -577,7 +595,6 @@ def system_dash(
 			zlim = np.abs(np.nan_to_num(bus_power)).max()
 			fig = px.imshow(wrap(bus_power, plot_key), origin='lower', zmin=-zlim, zmax=zlim, color_continuous_scale='RdBu_r')
 		if plot_key == 'dissipation':
-			dissipation = copper_loss + iron_loss
 			zlim = np.abs(np.nan_to_num(dissipation)).max()
 			fig = px.imshow(wrap(dissipation, plot_key), origin='lower', zmin=0, zmax=zlim, color_continuous_scale='Electric')
 		if plot_key == 'Id':
@@ -616,7 +633,7 @@ def system_dash(
 
 
 		# FIXME: move to declaration?
-		fig.update_layout(margin=dict(b=0, t=0, l=0, r=0))
+		# fig.update_layout(margin=dict(b=0, t=0, l=0, r=0))
 
 		return fig
 
