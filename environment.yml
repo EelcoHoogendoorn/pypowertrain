@@ -16,3 +16,4 @@ dependencies:
   - dash
   - jsonpickle
   - dash-bootstrap-components
+  - jupyter-server-proxy
