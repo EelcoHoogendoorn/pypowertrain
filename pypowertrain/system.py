@@ -42,7 +42,7 @@ class DummyLoad(Load):
 		return dbc.Tab(label='Load', children=[
 			html.Label('Inertia (Kg m^2)'),
 			dcc.Slider(0, 10, 1, value=self.inertia, id='inertia-slider'),
-			html.Label('Drag (Nm / s)'),
+			html.Label('Drag (Nm / (rad/s))'),
 			dcc.Slider(0, 0.01, 0.001, value=self.drag, id='drag-slider'),
 		])
 
@@ -159,7 +159,7 @@ def system_limits(
 
 		# FIXME: work Id-FW-dependence into iron drag? Id division should be about equal to demag current limit
 		#  effect seems quite minimal in practice; like 3% kph continuous rating
-		drag_torque = motor.iron_drag(omega_axle_hz) #* (1+Id/300)**2
+		drag_torque = np.sign(omega_axle_hz) * motor.iron_drag(omega_axle_hz) #* (1+Id/300)**2
 		copper_loss = Is*Rt
 		iron_loss = omega_axle_rad * drag_torque + omega_elec_rad**2*Is*0
 		dissipation = copper_loss + iron_loss
@@ -290,7 +290,7 @@ def system_plot(
 
 		if targets is not None:
 			t_torque, t_rpm, t_dissipation, t_weight = [np.array(t) for t in targets]
-			plt.scatter(t_rpm, t_torque)
+			plt.scatter(system.x_axis(t_rpm)[1], system.y_axis(t_torque)[1])
 
 		plt.xlabel(x)
 		plt.xticks(X[::len(X)//10])

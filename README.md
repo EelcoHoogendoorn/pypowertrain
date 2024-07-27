@@ -2,7 +2,7 @@
 pypowertrain
 =========
 
-[Get started with a runnnable notebook!](https://mybinder.org/v2/gh/EelcoHoogendoorn/pypowertrain/HEAD?labpath=getting_started.ipynb)
+[Get started with a runnable notebook!](https://mybinder.org/v2/gh/EelcoHoogendoorn/pypowertrain/HEAD?labpath=getting_started.ipynb)
 
 Summary
 -------
@@ -32,7 +32,7 @@ def test_example(kmh=40, inch=20):
 ```
 <img src="./grin_with_odrive.png" width="400" height="300"/>
 
-This package has functionality for [optimizing](./pypowertrain/test/test_optimize.py) over all components of a powertrain, such as motor geometry, battery configuration or controller parameters, to attain certain design constraints, while minimizing objectives such as weight or cost. Currently the only physical systems implemented are vehicles, but it is designed to be easy to extend to robotic actuators, quadcopters, wind turbines, or you name it.
+This package has functionality for [optimizing](./pypowertrain/test/test_optimize.py) over all components of a powertrain, such as motor geometry, battery configuration or controller parameters, to attain certain design constraints, while minimizing objectives such as weight or cost. Currently, the only physical systems implemented are vehicles, but it is designed to be easy to extend to robotic actuators, quadcopters, wind turbines, or you name it.
 
 The approach to motor design optimization relies on applying simple scaling laws to existing, empirically verified components. Doing ab-initio calculations has its use; but does not easily answer question like 'can the manufacturer actually wind these wires in that tooth geometry' and 'is the saturation going to cause audible harmonics that cross into the annoying-region'; and so on. 
 

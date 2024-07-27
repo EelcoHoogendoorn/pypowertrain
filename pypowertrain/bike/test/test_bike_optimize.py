@@ -29,13 +29,13 @@ def test_moped():
 	target_weight = [(0,1)]*3
 
 	# top speed capability
-	target_torque += [20 / bike.n_motors]
+	target_torque += [20 / bike.load.n_motors]
 	target_rpm += [rated_rpm]
 	target_dissipation += [250]
 	target_weight += [(1,1)]
 
 	# decent hill climbing ability
-	target_torque += [60 / bike.n_motors]
+	target_torque += [60 / bike.load.n_motors]
 	target_rpm += [rated_rpm*0.8]
 	target_dissipation += [250]
 	target_weight += [(1,1)]
@@ -75,4 +75,4 @@ def test_moped():
 		Cf=0.8,
 	)
 
-	system_dash(bike, targets=targets).run()
+	system_plot(bike, targets=targets)

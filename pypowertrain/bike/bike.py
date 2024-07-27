@@ -127,17 +127,17 @@ class BikeSystem(System):
 
 	def aero_drag(self, mps):
 		rho = 1.225
-		return (1 / 2) * rho * self.load.CdA * mps ** 2
+		return (1 / 2) * rho * self.load.CdA * mps * np.abs(mps)
 
 	def gravity_drag(self, grade):
 		return self.downforce * np.sin(np.arctan(grade))
 
-	def rolling_drag(self):
-		return self.load.Cr * self.downforce
+	def rolling_drag(self, mps):
+		return self.load.Cr * self.downforce * np.sign(mps)
 
 	def drag(self, rpm, grade=0):
 		mps = self.load.rpm_to_kph(rpm) / 3.6
-		return self.rolling_drag() + self.aero_drag(mps) - self.gravity_drag(grade)
+		return self.rolling_drag(mps) + self.aero_drag(mps) - self.gravity_drag(grade)
 
 	@property
 	def downforce(self):

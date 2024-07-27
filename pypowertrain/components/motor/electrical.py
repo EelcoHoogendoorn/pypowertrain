@@ -150,4 +150,4 @@ class Electrical(Scaled, Base):
 		return self.L - self.salience
 	def iron_drag(self, omega):
 		"""omega in mechanical hz"""
-		return self.d_0 + self.d_1 * omega
+		return self.d_0 + self.d_1 * np.abs(omega)

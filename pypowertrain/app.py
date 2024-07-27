@@ -208,6 +208,9 @@ def system_dash(
 		html.Label('Thermal curve specification'),
 		thermal_table,
 		html.Div(id='debug'),
+		html.Label('Mirroring'),
+		dcc.Checklist(options=['x-axis'], value=[], id='x-check'),
+		dcc.Checklist(options=['y-axis'], value=['y-axis'], id='y-check'),
 	])
 
 	graph_tab = dbc.Tab(label='Graph', children=[
@@ -341,8 +344,11 @@ def system_dash(
 		Input('system', 'data'),
 		Input('rescale', 'value'),
 		Input('resolution-slider', 'value'),
+		Input('x-check', 'value'),
+		Input('y-check', 'value'),
+
 	)
-	def compute_handler_ranges(system, rescale, resolution):
+	def compute_handler_ranges(system, rescale, resolution, x_check, y_check):
 		"""update range estimates"""
 		_n_rpm = n_rpm * resolution
 		_n_torque = n_torque * resolution
@@ -350,8 +356,8 @@ def system_dash(
 		if rescale:
 			system = pickle_decode(system)
 			max_rpm, max_torque = system_detect_limits(system, fw=1.3)
-			rpm_range = np.linspace(0, max_rpm, _n_rpm, endpoint=True)
-			torque_range = np.linspace(-max_torque, +max_torque, _n_torque, endpoint=True)
+			rpm_range = np.linspace(-max_rpm * (1 if 'x-axis' in x_check else 0), max_rpm, _n_rpm, endpoint=True)
+			torque_range = np.linspace(-max_torque * (1 if 'y-axis' in y_check else 0), +max_torque, _n_torque, endpoint=True)
 			return jsonpickle.dumps((rpm_range, torque_range))
 
 		return dash.no_update

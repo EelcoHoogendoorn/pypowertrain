@@ -60,8 +60,8 @@ class Actuator(Base):
 		circumferential = rpm / 60 * self.motor.geometry.gap_circumference
 		def process_speed(i):
 			thermal = self.motor.thermal.replace(	# appropriately scale forced convection terms
-				conductivity__linear=mps[i],
-				conductivity__circumferential=circumferential[i]
+				conductivity__linear=np.abs(mps[i]),
+				conductivity__circumferential=np.abs(circumferential[i])
 			)
 			# solve impulse responses
 			d_iron = thermal.solve({'stator': 1}, dt=dt)[key]

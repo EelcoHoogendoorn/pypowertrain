@@ -45,10 +45,9 @@ def test_optimize_torque():
 	]
 	targets = target_torque, target_rpm, target_dissipation, target_weight
 
-	optimized = system
 
-	print(optimized.weight)
-	print(optimized.actuator.weight)
+	print(system.weight)
+	print(system.actuator.weight)
 
 	optimized = system_optimize(system, bounds, targets, conditions)
 

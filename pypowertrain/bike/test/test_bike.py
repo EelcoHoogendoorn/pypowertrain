@@ -23,8 +23,8 @@ def test_example(kmh=40, inch=20):
 		battery=define_battery_limits(v=58, wh=500),
 	)
 
-	# system_plot(bike)
-	system_dash(bike).run()
+	system_plot(bike)
+	# system_dash(bike).run()
 
 
 def test_moped():
