@@ -161,3 +161,12 @@ class Scaled(Base):
 		if attr.startswith('__') and attr.endswith('__'):
 			raise AttributeError	# need this check to make pickle work
 		return self.get_attr(attr)
+
+
+import pickle	# fixme: can we drop pickle for json here? perhaps some small changes to Base dataclass?
+import codecs
+
+def pickle_decode(obj):
+	return pickle.loads(codecs.decode(obj.encode(), "base64"))
+def pickle_encode(obj):
+	return codecs.encode(pickle.dumps(obj), "base64").decode()

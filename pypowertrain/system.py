@@ -1,4 +1,3 @@
-import numpy
 import numpy as np
 
 from pypowertrain.utils import *
@@ -6,20 +5,60 @@ from pypowertrain.components.actuator import Actuator
 from pypowertrain.components.battery import Battery
 
 
+
+from dash import html, dcc, callback, Output, Input
+import dash_bootstrap_components as dbc
+
+
 @dataclass
 class Load(Base):
 
 	def load(self, rpm):
-		"""override"""
-		# by default, lets have only a light aero drag on the output shaft
-		f = rpm / 1000
-		return f * np.abs(f)
+		raise NotImplementedError
 	@property
-	def inertia(self):
-		return 0
+	def weight(self):
+		raise NotImplementedError
+	def dash_tab(self):
+		raise NotImplementedError
+	def dash_callback(self):
+		raise NotImplementedError
+
+
+@dataclass
+class DummyLoad(Load):
+
+	drag: float = 2e-3
+	inertia: float = 1.0
+
+	def load(self, rpm):
+		# by default, lets have only a light aero drag on the output shaft
+		f = rpm * self.drag
+		return f * np.abs(f)
 	@property
 	def weight(self):
 		return 0
+
+	def dash_tab(self):
+		return dbc.Tab(label='Load', children=[
+			html.Label('Inertia (Kg m^2)'),
+			dcc.Slider(0, 10, 1, value=self.inertia, id='inertia-slider'),
+			html.Label('Drag (Nm / s)'),
+			dcc.Slider(0, 0.01, 0.001, value=self.drag, id='drag-slider'),
+		])
+
+	def dash_callback(self):
+		@callback(
+			Output('load', 'data'),
+
+			Input('inertia-slider', 'value'),
+			Input('drag-slider', 'value'),
+		)
+		def compute_handler_system(
+				inertia, drag,
+		):
+			return pickle_encode(self.replace(
+				drag=drag, inertia=inertia
+			))
 
 
 @dataclass
@@ -27,7 +66,7 @@ class System(Base):
 	"""Simple battery-controller-motor system"""
 	battery: Battery
 	actuator: Actuator
-	load: Load = Load()
+	load: Load = DummyLoad()
 
 	@property
 	def weight(self):
@@ -44,11 +83,17 @@ class System(Base):
 	def acceleration(self, rpm, torque):
 		net = torque - self.load.load(rpm)
 		return net / self.inertia
+	def acceleration_lines(self):
+		return '{:0.2f} rad/s^2', [-10, 0, +10]
 
 	def x_axis(self, rpm=0):
 		return 'rpm', rpm
 	def y_axis(self, nm=0):
 		return 'Nm', nm
+
+	def temperatures(self, rpm, copper_loss, iron_loss, dt, key='coils'):
+		mps = rpm * 0	# by default, no link between rpm and free stream velocity
+		return self.actuator.temperatures(mps, rpm, copper_loss, iron_loss, dt, key)
 
 
 def system_limits(
@@ -122,7 +167,7 @@ def system_limits(
 		mechanical_power = mechanical_torque * omega_axle_rad
 		bus_power = dissipation + mechanical_power
 
-		bus_current = bus_power / battery.voltage	# FIXME: solve bus voltage sag properly; get errors right now for high resistsances
+		bus_current = bus_power / battery.voltage	# FIXME: solve bus voltage sag properly; get wonky results right now for high resistsances
 		effective_bus_voltage = battery.voltage - bus_current * bus_resistance
 		effective_voltage = actuator.effective_voltage(effective_bus_voltage)
 
@@ -162,10 +207,10 @@ def round(x, digits):
 	return np.ceil(x / shift) * shift
 
 
-def system_detect_limits(system, fw=3, frac=0.95, padding=1.1):
+def system_detect_limits(system, fw=1.3, frac=0.95, padding=1.1):
 	"""auto-detect some reasonably tight limits on the actuator system"""
 	max_torque = system.actuator.peak_torque * 1.1
-	max_rpm = system.actuator.motor.electrical.Kv * system.battery.voltage * fw
+	max_rpm = system.actuator.motor.electrical.Kv * system.battery.voltage * fw * system.actuator.n_series
 	trange = np.linspace(-max_torque, +max_torque, 20, endpoint=True)
 	rpm = np.linspace(0, max_rpm, 20, endpoint=False)
 	_, _, _, _, _, _, torque = system_limits(system, trange, rpm)
@@ -176,478 +221,6 @@ def system_detect_limits(system, fw=3, frac=0.95, padding=1.1):
 	return max_rpm, max_torque
 
 
-def calc_stuff(system, rpm_range, torque_range, thermal_specs):
-	"""do heavy calcs on system"""
-	# eval the system performance graphs
-	things = system_limits(system, torque_range, rpm_range).astype(np.float32)
-	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = things
-
-	# construct thermal curves
-	linear_velocity = rpm_range * 0
-	thermals = {
-		s['color']: system.actuator.temperatures(
-			linear_velocity, rpm_range, copper_loss, iron_loss, dt=s['dt']) - s['dT']
-		for s in thermal_specs
-	}
-
-	return things, thermals
-
-
-def system_dash(
-	system: System,
-	n_rpm=50,
-	n_torque=51,
-	max_rpm=None,
-	max_torque=None,
-	targets=None,
-):
-	"""dash plotly app
-
-	add range sliders, to set bounds for optimization
-	then add a button to do some grad descent within the bounds given by the slider
-
-	https://dash.plotly.com/sharing-data-between-callbacks
-	FIXME:	precomp thermals and their contours too.
-	  then send via jsonpiakle, with numpy extension.
-
-	FIXME: split plot area in 4; original and scaled motors, geometry and curves
-
-	FIXME: add system tab; vanilla one has just dummy weight and drag sliders
-	  but bike will expose all bike parameters
-	"""
-	import plotly.graph_objects as go
-	from dash import Dash, html, dcc, callback, Output, Input, State, ctx, dash_table
-	import dash
-	import dash_bootstrap_components as dbc
-	import plotly.express as px
-
-	import jsonpickle
-	import jsonpickle.ext.numpy as jsonpickle_numpy
-	jsonpickle_numpy.register_handlers(ndarray_mode='ignore')
-
-	import pickle	# fixme: can we drop pickle for json here? perhaps some small changes to Base dataclass?
-	import codecs
-
-	plots = ['dissipation', 'power', 'efficiency', 'Id', 'acceleration']
-
-	turns_tooltip = "This changes the number of turns, at equal total copper volume in the coils. As such it does not impact the motor mass. There is no right or wrong here; but it is important to tune it properly to the intended application. This scaling law is exact; although it ignores enamel thickness, eddy-losses, and winding-practicalities."
-	radius_tooltip = 'Radial scaling has a quadratic effect on both motor mass and torque. Dialing in this value to one appropriate for your design constraints is often one of the more important ones. Note that radial scaling is exact in terms of the electrical parameters. The mass predictions of the frameless parts of the motor are exact, but the main uncertainty here is in the mass of the structural parts; depending on the scale different construction technicues might be appropriate'
-	slot_depth_tooltip = 'The slot depth has a direct influence on the amount of copper available, and tends to scale the thermal curves along the y-axis. It also has a profound effect on motor weight, since most of the mass in in the teeth and their copper. Very few caveats apply to this scaling law and extrapolations should be valid over a wide range of scalings'
-	axial_tooltip = 'Scaling of the axial length of the motor. Too low values will results in excessive negative end-effects, such as coil overhang. Longer values tend to have more restrictive thermal performance, per kg of motor'
-	reluctance_tooltip = 'Scaling of the amount of mu-0 in the motor magnetic circuit, at equal flux-density, and equal iron saturation. This is a fairly safe rescaling, although it ignores flux leakage and fringing effects. It will impact inductance and demagnetization limits.'
-	slot_width_tooltip = 'Scaling of the slot width. This trades copper current area for iron flux area. Narrower slots will raise resistance, and lower iron losses. Increasing slot width is generally not recommended, since motors tend to be designed near their iron saturation limits. A slight decrease might make sense though, if the resistance-headroom exists. Iron saturation is not currently modelled but more iron should raise the iron saturation limit too.'
-	frequency_tooltip = "Scaling of the number of poles and slots, at equal gap radius. Note that these fractional scalings are generally not realizable; but adjusting this value should give quite an accurate idea, if your application would benefit from a motor with a different pole count."
-	# flux_tooltip = 'Flux scaling, at equal field density. This increases magnet volume and tooth width, at equal iron field level'
-
-	thermal_specs = [
-		{'color': 'yellow', 'dt': 5000, 'dT': 60},
-		{'color': 'orange', 'dt': 60, 'dT': 60},
-		{'color': 'red', 'dt': 2, 'dT': 40},
-	]
-
-	from pypowertrain.library import odrive, grin, moteus
-	controllers = {
-		'odrive.pro': odrive.pro(),
-		'odrive.pro_nominal': odrive.pro_nominal(),
-		'odrive.pro_overclock': odrive.pro_overclock(),
-		'grin.phaserunner': grin.phaserunner(),
-		'moteus.n1': moteus.n1()
-	}
-	motors = {
-		'odrive.M8325s_100KV': odrive.M8325s_100KV(),
-		'grin.all_axle': grin.all_axle(),
-		'moteus.mj5208': moteus.mj5208()
-	}
-	overlays = [
-		'Thermal',
-		'Field weakening',
-		'Efficiency',
-		'Acceleration',
-	]
-	plot_types = ['Geometry', 'Graph']
-
-	app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
-
-	thermal_table = dash_table.DataTable(
-		id='table-thermal',
-		columns=([
-			{'id': p, 'name': p, 'type': 'text' if isinstance(v, str) else 'numeric'}
-			for p, v in thermal_specs[0].items()
-		]),
-		data=thermal_specs,
-		editable=True
-	)
-	# stats_table = dash_table.DataTable()
-
-	# FIXME: make swappable through subclass. make bike a load-type on system?
-	#  enumerate load dataclass fields to autogenerate?
-	load_tab = dbc.Tab(label='Load', children=[
-		html.Label('Inertia (Kg m^2)'),
-		dcc.Slider(0, 100, 10, value=0, id='weight-slider'),
-		html.Label('Drag (Nm / s)'),
-		dcc.Slider(0, 100, 10, value=0, id='drag-slider'),
-	])
-	motor_tab = dbc.Tab(label='Motor', children=[
-		dcc.Dropdown(list(motors.keys()), 'grin.all_axle', id='dropdown-motor'),
-		html.Div(id='motor-weight-label', style={'whiteSpace': 'pre-wrap'}),
-		html.Label('Turns'),
-		dcc.Slider(1, 10, 1, value=system.actuator.motor.geometry.turns, id='turns-slider'),
-		dbc.Tooltip(turns_tooltip, target='turns-slider'),
-		html.Label('Radius-scale'),
-		dcc.Slider(0.1, 2, 0.1, value=1, id='radius-slider'),
-		dbc.Tooltip(radius_tooltip, target='radius-slider'),
-		html.Label('Slot-depth-scale'),
-		dcc.Slider(0.3, 1.5, 0.1, value=1, id='slot-depth-slider'),
-		dbc.Tooltip(slot_depth_tooltip, target='slot-depth-slider'),
-		html.Label('Axial-length-scale'),
-		dcc.Slider(0.5, 1.5, 0.1, value=1, id='axial-slider'),
-		dbc.Tooltip(axial_tooltip, target='axial-slider'),
-		html.Label('Slot width scale'),
-		dcc.Slider(0.5, 1.0, 0.1, value=1, id='slot-width-slider'),
-		dbc.Tooltip(slot_width_tooltip, target='slot-width-slider'),
-		html.Label('Reluctance scale'),
-		dcc.Slider(0.5, 1.5, 0.1, value=1, id='reluctance-slider'),
-		dbc.Tooltip(reluctance_tooltip, target='reluctance-slider'),
-		html.Label('Frequency scale'),
-		dcc.Slider(0.5, 1.5, 0.1, value=1, id='frequency-slider'),
-		dbc.Tooltip(frequency_tooltip, target='frequency-slider'),
-	])
-	battery_tab = dbc.Tab(label='Battery', children=[
-		html.Label('Battery charge'),
-		dcc.Slider(0.0, 1.0, 0.1, value=system.battery.charge_state, id='charge-slider'),
-		html.Label('Battery P'),
-		dcc.Slider(1, 20, 1, value=system.battery.P, id='P-slider'),
-		html.Label('Battery S'),
-		dcc.Slider(1, 20, 1, value=system.battery.S, id='S-slider'),
-		html.Div(id='battery-weight-label'),
-	])
-	controller_tab = dbc.Tab(label='Controller', children=[
-		html.Label('Controller'),
-		dcc.Dropdown(list(controllers.keys()), 'odrive.pro', id='dropdown-controller'),
-		dcc.Checklist(options=['Field weakening'], value=['Field weakening'], id='field-weakening'),
-		html.Label('Number of controllers'),
-		dcc.Slider(1, 5, 1, value=system.actuator.n_series, id='n_series-slider'),
-	])
-	visual_tab = dbc.Tab(label='Visual', children=[
-		html.Label('Plot types'),
-		dcc.Checklist(options=plot_types, value=plot_types, id='plot-type-list'),
-		html.Label('Plot image'),
-		dcc.Dropdown(plots, 'acceleration', id='dropdown-selection'),
-		html.Label('Plot overlays'),
-		dcc.Checklist(options=overlays, value=overlays, id='check-overlay', labelStyle={'display': 'block'},),
-		html.Label('Automatic plot bound rescaling'),
-		dcc.Checklist(options=['Rescale'], value=['Rescale'], id='rescale'),
-		html.Label('Simulation resolution'),
-		dcc.Slider(1, 4, 1, value=1, id='resolution-slider'),
-		html.Label('Thermal curve specification'),
-		thermal_table,
-		html.Div(id='debug'),
-	])
-
-	graph_tab = dbc.Tab(label='Graph', children=[
-		dcc.Graph(
-			id='graph-content',
-			style={"width": "100%", "height": "90vh"},
-			responsive=True,
-		),
-	])
-	geometry_tab = dbc.Tab(label='Geometry', children=[
-		dcc.Graph(
-			id='geometry-content',
-			style={"width": "100%", "height": "100vh"},
-			responsive=True,
-		),
-	])
-
-	# main layout structure
-	app.layout = html.Div([
-		dbc.Container(
-			dbc.Row([
-				dbc.Col(
-					dbc.Tabs([
-						graph_tab,
-						geometry_tab,
-					]),
-					width=8,
-				),
-				dbc.Col(
-					dbc.Tabs([
-						motor_tab,
-						battery_tab,
-						controller_tab,
-						load_tab,
-						visual_tab,
-					]),
-					width=4,
-				),
-			]),
-		),
-
-		# dcc.Store(id='coarsedata'),		# FIXME: split this more granular? sep arrays? coarse and fine?
-		dcc.Store(id='system'),
-		dcc.Store(id='ranges'),
-		dcc.Store(id='graphdata'),
-	])
-
-
-	@callback(
-		Output('system', 'data'),
-
-		Input('dropdown-motor', 'value'),
-		Input('turns-slider', 'value'),
-		Input('radius-slider', 'value'),
-		Input('slot-depth-slider', 'value'),
-		Input('axial-slider', 'value'),
-		Input('slot-width-slider', 'value'),
-		Input('reluctance-slider', 'value'),
-		Input('frequency-slider', 'value'),
-
-		Input('charge-slider', 'value'),
-		Input('P-slider', 'value'),
-		Input('S-slider', 'value'),
-
-		Input('dropdown-controller', 'value'),
-		Input('field-weakening', 'value'),
-		Input('n_series-slider', 'value')
-	)
-	def compute_handler_system(
-			motor, turns, radius, slot_depth, length, slot_width, reluctance, frequency,
-			charge, P, S,
-			controller, field_weakening, n_series
-	):
-		"""Put all modifiers to the system object here"""
-		# FIXME: place base object selection upstream?
-		sysr = system.replace(
-			__motor=motors[motor],
-			__controller=controllers[controller],
-		).replace(
-			__geometry__turns=turns,
-			__geometry__radius_scale=radius,
-			__geometry__slot_depth_scale=slot_depth,
-			__geometry__length_scale=length,
-			__geometry__slot_width_scale=slot_width,
-			__geometry__reluctance_scale=reluctance,
-			__geometry__frequency_scale=frequency,
-			battery__charge_state=charge,
-			battery__P=P,
-			battery__S=S,
-			__controller__field_weakening=bool(field_weakening),
-			actuator__n_series=n_series,
-		)
-		return codecs.encode(pickle.dumps(sysr), "base64").decode()
-
-
-	@callback(
-		Output('motor-weight-label', 'children'),
-		Input('system', 'data'),
-	)
-	def compute_handler_actuator_weight(system):
-		system = pickle.loads(codecs.decode(system.encode(), "base64"))
-		return \
-			f'Mass:\t {system.actuator.motor.mass.total:0.3f} \tkg\n' \
-			f'Kt:\t\t {system.actuator.motor.electrical.Kt:0.3f} \tNm/A\n' \
-			f'R: \t\t {system.actuator.motor.electrical.R:0.3f} \tohm\n' \
-			f'L: \t\t {system.actuator.motor.electrical.L*1000:0.3f} \tmH'
-
-
-	@callback(
-		Output('battery-weight-label', 'children'),
-		Input('system', 'data'),
-	)
-	def compute_handler_battery_weight(system):
-		system = pickle.loads(codecs.decode(system.encode(), "base64"))
-		return f'Weight: {system.battery.weight:0.3f} kg'
-
-	@callback(
-		Output('ranges', 'data'),
-
-		Input('system', 'data'),
-		Input('rescale', 'value'),
-		Input('resolution-slider', 'value'),
-	)
-	def compute_handler_ranges(sysr, rescale, resolution):
-		"""update range estimates"""
-		_n_rpm = n_rpm * resolution
-		_n_torque = n_torque * resolution
-
-		if rescale:
-			sysr = pickle.loads(codecs.decode(sysr.encode(), "base64"))
-			max_rpm, max_torque = system_detect_limits(sysr, fw=2)
-			rpm_range = np.linspace(0, max_rpm, _n_rpm, endpoint=True)
-			torque_range = np.linspace(-max_torque, +max_torque, _n_torque, endpoint=True)
-			return jsonpickle.dumps((rpm_range, torque_range))
-
-		return dash.no_update
-
-
-	@callback(
-		Output('debug', 'children'),
-		Input('table-thermal', 'data'),
-	)
-	def compute_handler(thermals):
-		return str(thermals)
-
-	@callback(
-		Output('graphdata', 'data'),
-
-		Input('system', 'data'),
-		Input('ranges', 'data'),
-		Input('table-thermal', 'data'),
-	)
-	def compute_handler(sysr, ranges, thermals):
-		"""do motor calcs and write to data store"""
-		sysr = pickle.loads(codecs.decode(sysr.encode(), "base64"))
-		rpm_range, torque_range = jsonpickle.loads(ranges)
-
-		res = calc_stuff(sysr, rpm_range, torque_range, thermals)
-		# FIXME: only transport arrays that are actually used. pre-extract contours?
-		# copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = things
-		return jsonpickle.dumps(res)
-
-
-	@app.callback(
-		Output('geometry-content', 'figure'),
-		Input('system', 'data'),
-		Input('plot-type-list', 'value'),
-	)
-	def update_geo_plot(system, plot_types):
-		if not 'Geometry' in plot_types: return go.Figure()
-
-		system = pickle.loads(codecs.decode(system.encode(), "base64"))
-
-		fig = go.Figure()
-
-		geo = system.actuator.motor.geometry.plot_geometry()
-		for g in geo:
-			data = g['segments']
-			c = g.get('colors', None)
-			for i in range(len(data)):
-				fig.add_trace(
-					go.Scatter(
-						x=data[i][:, 0],
-						y=data[i][:, 1],
-						mode='lines',
-						line_color=c[i] if c else 'gray',
-						showlegend=False,
-					)
-				)
-		return fig
-
-	@app.callback(
-		Output('graph-content', 'figure'),
-
-		Input('dropdown-selection', 'value'),
-		Input('check-overlay', 'value'),
-		Input('graphdata', 'data'),
-		State('ranges', 'data'),
-		Input('plot-type-list', 'value'),
-	)
-	def update_graph(plot_key, overlay_data, data, ranges, plot_types):
-		if not 'Graph' in plot_types: return go.Figure()
-
-		rpm_range, torque_range = jsonpickle.loads(ranges)
-		things, thermals = jsonpickle.loads(data)
-
-		copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = things
-		dissipation = copper_loss + iron_loss
-
-		# efficiency = 1 - dissipation / np.abs(bus_power)
-		efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
-		acceleration = system.acceleration(rpm_range, torque)
-
-		x, X = system.x_axis(rpm_range)
-		y, Y = system.y_axis(torque_range)
-
-		import xarray as xr
-		def wrap(arr, name=''):
-			return xr.DataArray(
-				data=arr,
-				dims=[y, x],
-				coords={x: X, y: Y},
-				name=name
-			)
-
-		def contour(fig, data, color="rgba(0,0,0,1)", name=''):
-			import skimage.measure
-			contours = skimage.measure.find_contours(data, 0)
-
-			for contour in contours:
-				x = numpy.interp(contour[:, 1], np.arange(len(X)), X)
-				y = numpy.interp(contour[:, 0], np.arange(len(Y)), Y)
-				fig.add_trace(
-					go.Scatter(
-						x=x, y=y, mode='lines',
-						line_color=color,
-						showlegend=False, name=name,
-					))
-				fig.add_trace(
-					go.Scatter(
-						x=x, y=y, mode='lines', line_dash='dash',
-						line_color='black',
-						showlegend=False, name=name,
-					))
-
-
-		if plot_key == 'efficiency':
-			# FIXME: add custom color scale with high contrast at the high end
-			fig = px.imshow(wrap(efficiency, plot_key), origin='lower', zmin=0, zmax=1, color_continuous_scale='rainbow')
-		if plot_key == 'power':
-			zlim = np.abs(np.nan_to_num(bus_power)).max()
-			fig = px.imshow(wrap(bus_power, plot_key), origin='lower', zmin=-zlim, zmax=zlim, color_continuous_scale='RdBu_r')
-		if plot_key == 'dissipation':
-			zlim = np.abs(np.nan_to_num(dissipation)).max()
-			fig = px.imshow(wrap(dissipation, plot_key), origin='lower', zmin=0, zmax=zlim, color_continuous_scale='Electric')
-		if plot_key == 'Id':
-			zlim = np.abs(np.nan_to_num(Id)).max()
-			fig = px.imshow(wrap(Id, plot_key), origin='lower', zmin=-zlim, zmax=zlim, color_continuous_scale='RdBu')
-		if plot_key == 'acceleration':
-			zlim = np.abs(np.nan_to_num(acceleration)).max()
-			fig = px.imshow(wrap(acceleration, plot_key), origin='lower', zmin=-zlim, zmax=zlim, color_continuous_scale='RdBu')
-
-		# FIXME: precompute contour lines
-		if 'Thermal' in overlay_data:
-			for c, m in thermals.items():
-				contour(fig, m, c, name='Thermal')
-
-		if 'Field weakening' in overlay_data:
-			# add FW limit
-			q = np.where(Id==0, 1, np.nan_to_num(Id, nan=-1))
-			import skimage.filters
-			lim = skimage.filters.gaussian(q, [3, 1])+Id*0 + 3
-			contour(fig, lim, color="white", name='Field weakening limit')
-
-		if 'Efficiency' in overlay_data:
-			contour(fig, efficiency - 0.9, color='green', name='90% efficiency')
-			# contour(fig, efficiency - np.nan_to_num(efficiency*(torque>0), nan=0).max() * 0.95, color='green')
-
-		if 'Acceleration' in overlay_data:
-			# add acceleration based load lines
-			amax = np.max(np.abs(np.nan_to_num(acceleration)))
-			for ll in [-amax/2, 0, amax/2]:
-				contour(fig, acceleration - ll, color='black', name='Acceleration')
-
-		# add x axis
-		fig.add_trace(
-			go.Scatter(x=rpm_range, y=rpm_range*0, name='x-axis', mode='lines', line_color='gray', showlegend=False,)
-		)
-
-
-		# FIXME: move to declaration?
-		# fig.update_layout(margin=dict(b=0, t=0, l=0, r=0))
-
-		return fig
-
-	return app
-
-	# if targets is not None:
-	# 	t_torque, t_rpm, t_dissipation, t_weight = np.array(targets)
-	# 	fig.add_trace(
-	# 		go.Scatter(
-	# 			x=t_rpm, y=t_torque,
-	# 			showlegend=False,
-	# 		))
-
-
 def system_plot(
 	system: System,
 	n_rpm=200,
@@ -656,7 +229,7 @@ def system_plot(
 	max_torque=None,
 	targets=None,
 ):
-	"""mpl plots of system limits"""
+	"""mpl plots of system limits and properties"""
 	import matplotlib.pyplot as plt
 
 	# setup calculation grids
@@ -669,6 +242,9 @@ def system_plot(
 	# eval the system performance graphs
 	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = system_limits(system, torque_range, rpm_range)
 	dissipation = copper_loss + iron_loss
+	efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
+
+	acceleration = system.acceleration(rpm_range, torque)
 
 	# construct thermal curves
 	thermal_specs = [
@@ -676,11 +252,9 @@ def system_plot(
 		{'color': 'orange', 'dt': 60, 'dT': 60},
 		{'color': 'red', 'dt': 2, 'dT': 40},
 	]
-	# NOTE: hardcoded zero here now; but should be configurable on the system object
-	linear_velocity = rpm_range * 0.0
 	thermals = {
-		s['color']: system.actuator.temperatures(
-			linear_velocity, rpm_range, copper_loss, iron_loss, dt=s['dt']) - s['dT']
+		s['color']: system.temperatures(
+			rpm_range, copper_loss, iron_loss, dt=s['dt']) - s['dT']
 		for s in thermal_specs
 	}
 
@@ -695,10 +269,6 @@ def system_plot(
 		return plt.contour(X, Y, im, **kwargs)
 
 	def default_annotate():
-		# V = system.battery.voltage - rpm / system.actuator.motor.electrical.Kv
-		# A = V* system.actuator.controller.modulation_factor / system.actuator.motor.R
-		# plt.plot(kph, A*system.actuator.motor.electrical.Kt)
-
 		# delineate FW-region
 		contour(Id, levels=[-1], colors='white')
 		# plot x axis
@@ -706,6 +276,17 @@ def system_plot(
 		# plot thermal limits
 		for c, m in thermals.items():
 			contour(m, levels=[0], colors=c)
+
+		# plot acceleration load lines
+		amin, amax = np.nan_to_num(acceleration).min(), np.nan_to_num(acceleration).max()
+		aname, lines = system.acceleration_lines()
+		for a in lines:
+			if np.all(a > amin+1e-3) and np.all(a < amax-1e-3):
+				contour(acceleration, levels=[a], colors='black')
+		contour(acceleration, levels=[amin + 5e-4], colors='gray')
+		contour(acceleration, levels=[amax - 5e-4], colors='gray')
+
+		contour(efficiency, levels=[0.9], colors='green')
 
 		if targets is not None:
 			t_torque, t_rpm, t_dissipation, t_weight = [np.array(t) for t in targets]
@@ -716,137 +297,38 @@ def system_plot(
 		plt.ylabel(y)
 		plt.yticks(Y[::len(Y)//10])
 
-	plt.figure()
-	efficiency = np.where(
-		torque >= 0,
-		np.abs(mechanical_power) / np.abs(bus_power),
-		np.abs(bus_power) / np.abs(mechanical_power)
-	)
-	imshow(efficiency, cmap='nipy_spectral', clim=(0, 1))
-	plt.title('Efficiency')
-	default_annotate()
-
-	plt.figure()
-	current_range = np.abs(np.nan_to_num(Id)).max()
-	imshow(Id, cmap='bwr', clim=(-current_range, current_range))
-	plt.title('Id')
-	default_annotate()
-
-	# bus power levels
-	plt.figure()
-	blim = np.abs(np.nan_to_num(bus_power)).max()
-	imshow(bus_power, cmap='bwr', clim=(-blim, blim))
-	plt.title('Bus power')
-	default_annotate()
+	# plt.figure()
+	# imshow(efficiency, cmap='nipy_spectral', clim=(0, 1))
+	# plt.title('Efficiency')
+	# default_annotate()
+	#
+	# plt.figure()
+	# current_range = np.abs(np.nan_to_num(Id)).max()
+	# imshow(Id, cmap='bwr', clim=(-current_range, current_range))
+	# plt.title('Id')
+	# default_annotate()
+	#
+	# # bus power levels
+	# plt.figure()
+	# blim = np.abs(np.nan_to_num(bus_power)).max()
+	# imshow(bus_power, cmap='bwr', clim=(-blim, blim))
+	# plt.title('Bus power')
+	# default_annotate()
+	#
+	# # dissipation
+	# plt.figure()
+	# imshow(dissipation, cmap='cool', clim=(0, np.nan_to_num(dissipation, nan=0).max()))
+	# plt.title('Dissipation')
+	# default_annotate()
 
 	# dissipation
 	plt.figure()
-	imshow(dissipation, cmap='cool', clim=(0, np.nan_to_num(dissipation, nan=0).max()))
-	plt.title('Dissipation')
+	alim = np.abs(np.nan_to_num(acceleration)).max()
+	imshow(acceleration, cmap='bwr', clim=(-alim, alim))
+	plt.title('Acceleration')
 	default_annotate()
 
 	plt.show()
-
-
-def system_plotly(
-	system: System,
-	n_rpm=200,
-	n_torque=500,
-	max_rpm=None,
-	max_torque=None,
-	targets=None,
-):
-	"""plotly plots of system limits"""
-	import plotly.graph_objects as go
-	import plotly.express as px
-
-	# setup calculation grids
-	if max_torque is None:
-		max_rpm, max_torque = system_detect_limits(system, fw=2)
-
-	rpm_range = np.linspace(0, max_rpm, n_rpm+1, endpoint=True)
-	torque_range = np.linspace(-max_torque, +max_torque, n_torque + 1, endpoint=True)
-
-	# eval the system performance graphs
-	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = system_limits(system, torque_range, rpm_range)
-	dissipation = copper_loss + iron_loss
-
-	# construct thermal curves
-	thermal_specs = [
-		{'color': 'yellow', 'dt': 5000, 'dT': 60},
-		{'color': 'orange', 'dt': 60, 'dT': 60},
-		{'color': 'red', 'dt': 4, 'dT': 20},
-	]
-	linear_velocity = rpm_range * 0
-	thermals = {
-		s['color']: system.actuator.temperatures(
-			linear_velocity, rpm_range, copper_loss, iron_loss, dt=s['dt']) - s['dT']
-		for s in thermal_specs
-	}
-
-	x, X = system.x_axis(rpm_range)
-	y, Y = system.y_axis(torque_range)
-	import xarray as xr
-
-	def wrap(arr, name=''):
-		return xr.DataArray(
-			data=arr,
-			dims=["Nm", "rpm"],
-			coords={"rpm": X, 'Nm': Y},
-			name=name
-		)
-
-	def contour(data, color="rgba(0,0,0,1)"):
-		import skimage.measure
-		contours = skimage.measure.find_contours(data, 0)
-
-		for contour in contours:
-			x = numpy.interp(contour[:, 1], np.arange(len(X)), X)
-			y = numpy.interp(contour[:, 0], np.arange(len(Y)), Y)
-			fig.add_trace(
-				go.Scatter(
-					x=x, y=y, mode='lines',
-					line_color=color,
-					showlegend=False,
-				))
-			fig.add_trace(
-				go.Scatter(
-					x=x, y=y, mode='lines', line_dash='dash',
-					line_color='black',
-					showlegend=False,
-				))
-
-	# Id[250:260, 20:30] = -6
-	zlim = np.abs(bus_power).max()
-	fig = px.imshow(wrap(bus_power), origin='lower', zmin=-zlim, zmax=zlim, color_continuous_scale='RdBu_r')
-	# fig = go.Figure(
-	# 	go.Image(x=X, y=Y, z=Id)
-	# )
-	for c, m in thermals.items():
-		contour(m, c)
-	# add FW limit
-	# lim = skimage.filters.gaussian(np.nan_to_num(Id, nan=0), 2)+Id*0 + 3
-	q = np.where(Id==0, 1, np.nan_to_num(Id, nan=-1))
-	import skimage.filters
-	lim = skimage.filters.gaussian(q, [3, 1])+Id*0 + 3
-	contour(lim, color="white")
-
-	# torque lines
-	for t in np.linspace(-200, 200, 9, endpoint=True):
-		# FIXME: add system.load type offset here
-		contour(torque - t - (rpm_range/200)**2, 'gray')
-	fig.show()
-
-
-
-
-	# if targets is not None:
-	# 	t_torque, t_rpm, t_dissipation, t_weight = np.array(targets)
-	# 	fig.add_trace(
-	# 		go.Scatter(
-	# 			x=t_rpm, y=t_torque,
-	# 			showlegend=False,
-	# 		))
 
 
 def sample_graph(graph, sample_point):

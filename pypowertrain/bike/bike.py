@@ -1,16 +1,15 @@
-import numpy as np
 
 from pypowertrain.system import *
 from pypowertrain.utils import *
 
+import scipy.optimize
 
-@dataclasses.dataclass(frozen=True)
-class Bike(Base):
-	front: Actuator
-	rear: Actuator
+root = lambda root, x0: scipy.optimize.root_scalar(root, x0=x0).root
+root_b = lambda root, b: scipy.optimize.root_scalar(root, bracket=b, method='bisect').root
 
-	battery: Battery
 
+@dataclass
+class BikeLoad(Load):
 	CdA: float
 	Cr: float
 	nominal_kmh: float
@@ -24,9 +23,17 @@ class Bike(Base):
 
 	Cf: float = 0.6		# wet road
 
+	front: bool = False		# only do identical motors for now
+	rear: bool = True
+
+	@property
+	def n_motors(self):
+		return (1 if self.front else 0) + (1 if self.rear else 0)
+
 	@property
 	def wheelbase(self):
 		return self.cog_rear + self.cog_front
+
 	@property
 	def wheel_radius(self):
 		return self.wheel_diameter / 2
@@ -34,79 +41,164 @@ class Bike(Base):
 	def wheel_circumference(self):
 		return self.wheel_diameter * np.pi
 
+
 	@property
-	def nominal_kinetic(self):
-		mps = self.nominal_kmh / 3.6
-		return (1/2) * self.weight * mps**2
-	@property
-	def n_motors(self):
-		return (0 if self.front is None else 1) + (0 if self.rear is None else 1)
+	def weight(self):
+		return self.rider_weight + self.structure_weight
+	# @property
+	# def inertia(self):
+	# 	return self.weight
 
 	def kph_to_rpm(self, kph):
 		return kph * 1000 / 60 / self.wheel_circumference
-	def rpm_to_kph(self, kph):
-		return kph / 1000 * 60 * self.wheel_circumference
+	def rpm_to_kph(self, rpm):
+		return rpm / 1000 * 60 * self.wheel_circumference
+
+
+
+	def dash_tab(self):
+		return dbc.Tab(label='Load', children=[
+			html.Label('Weight (Kg)'),
+			dcc.Slider(0, 100, 10, value=self.rider_weight, id='weight-slider'),
+			html.Label('CdA'),
+			dcc.Slider(0, 0.8, 0.05, value=self.CdA, id='cda-slider'),
+			html.Label('Cr'),
+			dcc.Slider(0, 0.01, 0.001, value=self.Cr, id='cr-slider'),
+			html.Label('Wheel (inch)'),
+			dcc.Slider(16, 28, 1, value=self.wheel_diameter/0.0256, id='wheel-slider'),
+
+			html.Label('cog height (m)'),
+			dcc.Slider(0, 1, 0.1, value=self.cog_height, id='cog-height-slider'),
+			html.Label('cog rear (m)'),
+			dcc.Slider(0, 1, 0.1, value=self.cog_rear, id='cog-rear-slider'),
+			html.Label('cog front (m)'),
+			dcc.Slider(0, 1, 0.1, value=self.cog_front, id='cog-front-slider'),
+			html.Label('Cf'),
+			dcc.Slider(0.1, 1.2, 0.1, value=self.Cf, id='cf-slider'),
+
+			dcc.Checklist(['Front'], value=['Front'], id='front-check'),
+			dcc.Checklist(['Rear'], value=['Rear'], id='rear-check'),
+		])
+
+	def dash_callback(self):
+		@callback(
+			Output('load', 'data'),
+
+			Input('weight-slider', 'value'),
+			Input('cda-slider', 'value'),
+			Input('cr-slider', 'value'),
+			Input('wheel-slider', 'value'),
+
+			Input('cog-height-slider', 'value'),
+			Input('cog-rear-slider', 'value'),
+			Input('cog-front-slider', 'value'),
+			Input('cf-slider', 'value'),
+
+			Input('front-check', 'value'),
+			Input('rear-check', 'value'),
+		)
+		def compute_handler_system(
+				weight, CdA, Cr, wheel,
+				cog_height, cog_rear, cog_front, cf,
+				front, rear,
+		):
+			return pickle_encode(self.replace(
+				CdA=CdA,
+				Cr=Cr,
+				rider_weight=weight,
+				wheel_diameter=wheel*0.0256,
+				cog_height=cog_height,
+				cog_rear=cog_rear,
+				cog_front=cog_front,
+				Cf=cf,
+				front='Front' in front,
+				rear='Rear' in rear,
+			))
+
+
+@dataclass
+class BikeSystem(System):
 
 	@property
-	def downforce(self):
-		return self.weight * 9.81
+	def nominal_kinetic(self):
+		# fixme rotational component!
+		mps = self.load.nominal_kmh / 3.6
+		return (1/2) * self.weight * mps**2
 
 	def aero_drag(self, mps):
 		rho = 1.225
-		return (1 / 2) * rho * self.CdA * mps ** 2
+		return (1 / 2) * rho * self.load.CdA * mps ** 2
 
 	def gravity_drag(self, grade):
 		return self.downforce * np.sin(np.arctan(grade))
 
 	def rolling_drag(self):
-		return self.Cr * self.downforce
+		return self.load.Cr * self.downforce
 
-	def system_drag_force(self, kph, grade=0):
-		"""power requirement of bike system"""
-		mps = kph / 3.6
-		force = self.rolling_drag() + self.aero_drag(mps) - self.gravity_drag(grade)
-		return force
-
-	def system_drag(self, kph, grade=0):
-		"""power requirement of bike system"""
-		mps = kph / 3.6
-		return self.system_drag_force(kph, grade) * mps
+	def drag(self, rpm, grade=0):
+		mps = self.load.rpm_to_kph(rpm) / 3.6
+		return self.rolling_drag() + self.aero_drag(mps) - self.gravity_drag(grade)
 
 	@property
-	def electrical_weight(self):
-		return (self.battery.weight
-				+ (0 if self.rear is None else self.rear.weight)
-				+ (0 if self.front is None else self.front.weight))
+	def downforce(self):
+		return self.weight * 9.81
+	@property
+	def rear_downforce(self):
+		return self.downforce * self.load.cog_front / self.load.wheelbase
+	@property
+	def front_downforce(self):
+		return self.downforce * self.load.cog_rear / self.load.wheelbase
+	def shift(self, t_force):
+		"""calc weight shift on each wheel as function of total traction force"""
+		return (t_force * self.load.cog_height) / self.load.wheelbase
+	def shifted_rear_downforce(self, t_force):
+		return self.rear_downforce + self.shift(t_force)
+	def shifted_front_downforce(self, t_force):
+		return self.front_downforce - self.shift(t_force)
 
+	@cached_property
+	def stoppie(self):
+		return root(self.shifted_rear_downforce, -self.downforce/2)
+	@cached_property
+	def wheelie(self):
+		return root(self.shifted_front_downforce, self.downforce/2)
+
+	@cached_property
+	def traction_efficiency(self):
+		q = self.downforce * 1.01
+		F = np.linspace(-q, q, 100, endpoint=True)	# force applied at each wheel
+		r = F * self.load.rear
+		f = F * self.load.front
+		return F, abs_traction(self, r, f) / (r+f)
+
+	def nm_to_g(self, nm_per_motor):
+		# fixme need to add rotational inertia to load
+		return nm_per_motor * self.load.n_motors / self.load.wheel_radius / self.weight / 9.81
+
+	def acceleration(self, rpm, torque):
+		"""acceleration in G"""
+		net_torque_per_motor = torque - self.drag(rpm) * self.load.wheel_radius / self.load.n_motors
+		x, y = self.traction_efficiency
+		eff = np.interp(net_torque_per_motor / self.load.wheel_radius, x, y)
+		return self.nm_to_g(net_torque_per_motor * eff)
+
+	def acceleration_lines(self):
+		return '{:0.2f}G', np.linspace(-1, +1, 21, endpoint=True)
 	@property
 	def weight(self):
-		return self.rider_weight + self.structure_weight + self.electrical_weight
+		return self.battery.weight + self.actuator.weight * self.load.n_motors + self.load.weight
 
-	def plot(self):
-		"""plot wheels in relation to COM"""
-
-	def rear_downforce(self):
-		return self.downforce * self.cog_front / self.wheelbase
-	def front_downforce(self):
-		return self.downforce * self.cog_rear / self.wheelbase
-
-
-@dataclass
-class BikeSystem(System):
-	bike: Bike = None
-	# def speed_forward(self, rpm):
-	# 	return self.bike.rpm_to_kph(rpm)
-	# def speed_backward(self, speed):
-	# 	return self.bike.kph_to_rpm(speed)
-	# def force_forward(self, nm):
-	# 	return nm / self.bike.wheel_radius / self.bike.weight / 9.81
-	# def force_backward(self, nm):
-	# 	return nm * self.bike.wheel_radius * self.bike.weight * 9.81
+	def temperatures(self, rpm, copper_loss, iron_loss, dt, key='coils'):
+		# for a bike, rpm and forward free stream velocity are coupled
+		mps = self.load.rpm_to_kph(rpm) / 3.6
+		return self.actuator.temperatures(mps, rpm, copper_loss, iron_loss, dt, key)
 
 	def x_axis(self, rpm=None):
-		return 'kmh', self.bike.rpm_to_kph(rpm)
-	def y_axis(self, nm=None):
-		return 'G', nm / self.bike.wheel_radius / self.bike.weight / 9.81
+		return 'kmh', self.load.rpm_to_kph(rpm)
+	# FIXME: what is the most natural y axis? not sure Nm is intrinsically meaningful but somehow grown attached to it
+	# def y_axis(self, nm=None):
+	# 	"""Acceleration of the bike"""
+	# 	return 'G', self.nm_to_g(nm)
 
 
 def bike_stats(bike):
@@ -115,202 +207,23 @@ def bike_stats(bike):
 	print('aero drag', bike.replace(Cr=0).system_drag(bike.nominal_kmh))
 
 
-def bike_plot(
-	bike: Bike,
-	torque_range=None,
-	gridsize=500,
-	targets=None
-):
-	"""plot bike performance"""
-
-	import matplotlib.pyplot as plt
-	# setup calculation grids
-	torque_range = torque_range or bike.rear.peak_torque * 1.1
-	trange = np.linspace(-torque_range, +torque_range, gridsize+1, endpoint=True)
-
-	kph = np.linspace(0, bike.nominal_kmh*2, 200+1, endpoint=True)
-	rpm = bike.kph_to_rpm(kph)
-	mps = kph / 3.6
-
-	# FIXME: just using rear now? work out multi-motor system;
-	system = BikeSystem(actuator=bike.rear, battery=bike.battery, bike=bike)
-	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = system_limits(system, trange, rpm)
-	dissipation = copper_loss + iron_loss
-
-
-	# construct thermal curves
-	thermal_specs = [
-		{'color': 'green', 'dt': 5000, 'dT': 30, 'key': 'shell'},
-		{'color': 'yellow', 'dt': 5000, 'dT': 60, 'key': 'coils'},
-		{'color': 'orange', 'dt': 60, 'dT': 60, 'key': 'coils'},
-		{'color': 'red', 'dt': 2, 'dT': 40, 'key': 'coils'},
-	]
-	thermals = {
-		s['color']: system.actuator.temperatures(
-			mps, rpm, copper_loss, iron_loss, dt=s['dt'], key=s['key']) - s['dT']
-		for s in thermal_specs
-	}
-
-
-	# vehicle model
-
-	winds = [-10, 0, +10]
-	# winds = [0]
-	# bumps = [-.05, 0, +.05]
-	bumps = [0]
-
-	# bumps = [0]
-	# 34% grade is world record; 17% is dutch record
-	# FIXME: dont need averaging here; makes bumps useless; need to fold in dissipation
-	# net force per wheel
-	wheel_force = (
-		torque / bike.wheel_radius -
-		# bike.system_drag(kph, grade)
-		np.mean([bike.system_drag_force(kph+w, 0) for w in winds for b in bumps], axis=0) / bike.n_motors
-		# for grade in [0]#np.linspace(-0.34, 0.34, 5)
-	)
-	grades = [bike.gravity_drag(g) for g in np.linspace(-0.34, 0.34, 5)]
-
-
-	# x axis idx of nominal kph
-	idx = np.argmin((kph - bike.nominal_kmh) ** 2)
-
-	sample = graph_sampler(wheel_force, 1e6, 0, idx + 1)
-	abs_force = abs_traction(bike, sample(wheel_force), 0 if bike.front is None else None)
-	dm, de, ts = integrate_traject(mps[:idx + 1], abs_force/bike.weight, sample(dissipation))
-	print(f'{(bike.nominal_kmh/3.6) / ts / 9.81} G average accel')
-	print(f'{ts} s to nominal')
-	# print(f'{de/bike.rear.heat_capacity_copper(dT=1)} dT(C) to nominal')
-
-	sample = graph_sampler(wheel_force, -1e6, 0, idx + 1)
-	abs_force = abs_traction(bike, sample(wheel_force), 0 if bike.front is None else None)
-	dm, de, ts = integrate_traject(mps[:idx + 1], abs_force/bike.weight, sample(dissipation), reverse=True)
-	print(f'{(bike.nominal_kmh/3.6) / ts / 9.81} G average decel')
-	print(f'{dm}m to full stop')
-	print(f'{ts}s to full stop')
-	# print(f'{de/bike.rear.heat_capacity_copper(dT=1)} dT(C) to full stop')
-
-
-	# sample equilibrium load line at rated speed
-	sampler = graph_sampler(wheel_force, 0, idx, idx + 1)
-	print(f'system_power: {sampler(mechanical_power) * bike.n_motors} W')
-	copper_loss = sampler(Iq**2+Id**2) * bike.rear.phase_resistance
-	print('copper', copper_loss*bike.n_motors)
-	print('dissipation', sampler(dissipation) * bike.n_motors)
-
-	power_use = sampler(bus_power) * bike.n_motors
-	print(f'bus power at nominal: {power_use} W')
-	print('runtime (h): ', bike.battery.capacity / power_use)
-	print('range (km): ', bike.battery.capacity / power_use * bike.nominal_kmh)
-
-
-	def imshow(im, **kwargs):
-		a = plt.pcolormesh(kph, trange, im, **kwargs)
-		plt.colorbar()
-		return a
-	def contour(im, **kwargs):
-		return plt.contour(kph, trange, im, **kwargs)
-
-	def default_annotate():
-		# delineate FW-region
-		contour(Id, levels=[-1], colors='white')
-
-		# V = system.battery.voltage *0.9 - rpm / system.actuator.motor.electrical.Kv
-		# A = V * system.actuator.controller.modulation_factor / system.actuator.motor.R
-		# plt.plot(kph, A*system.actuator.motor.electrical.Kt)
-
-		plt.plot(kph, kph * 0, c='gray')
-		plt.plot(np.ones_like(trange) * bike.nominal_kmh, trange, c='gray')
-
-		for ll in grades:
-			contour(wheel_force*bike.n_motors + ll, levels=[0], colors='black')
-		# plot thermal limits
-		for c, m in thermals.items():
-			contour(m, levels=[0], colors=c)
-
-		contour(dissipation, levels=[200], colors='purple')
-
-		if targets is not None:
-			t_torque, t_rpm, t_dissipation, t_weight = [np.array(t) for t in targets]
-			plt.scatter(bike.rpm_to_kph(t_rpm), t_torque)
-
-		plt.xticks(kph[::20])
-		plt.yticks([-torque_range, 0, torque_range])
-		plt.xlabel('kmh')
-		plt.ylabel('Nm')
-
-	plt.figure()
-	efficiency = np.where(
-		torque >= 0,
-		np.abs(mechanical_power) / np.abs(bus_power),
-		np.abs(bus_power) / np.abs(mechanical_power)
-	)
-	imshow(efficiency, cmap='nipy_spectral', clim=(0, 1))
-	plt.title('Efficiency')
-	default_annotate()
-
-	plt.figure()
-	current_range = np.abs(np.nan_to_num(Id)).max()
-	imshow(Id, cmap='bwr', clim=(-current_range, current_range))
-	plt.title('Id')
-	default_annotate()
-
-	# bus power levels
-	plt.figure()
-	blim = np.abs(np.nan_to_num(bus_power)).max()
-	imshow(bus_power, cmap='bwr', clim=(-blim, blim))
-	plt.title('Bus power')
-	default_annotate()
-
-	# dissipation
-	plt.figure()
-	imshow(dissipation, cmap='cool', clim=(0, np.nan_to_num(dissipation, nan=0).max()))
-	plt.title('Dissipation')
-	default_annotate()
-
-	plt.figure()
-	g = wheel_force * bike.n_motors / bike.downforce
-	imshow(g, cmap='bwr', clim=(-bike.Cf, bike.Cf))
-	contour(g, levels=np.arange(-20, 20)*0.1, colors='gray')
-	plt.title('Acceleration (G)')
-	default_annotate()
-
-
-	plt.show()
-
-
-def abs_traction(bike, rearforce=None, frontforce=None):
-	"""calculate braking/accel forces with abs,
+def abs_traction(bike: BikeSystem, rearforce=None, frontforce=None):
+	"""calculate traction forces with abs,
 	taking into account motor limits, friction limits, and weight shift effects"""
 	if frontforce is None: frontforce = rearforce
 	if rearforce is None: rearforce = frontforce
 	rearforce, frontforce = np.broadcast_arrays(rearforce, frontforce)
 
-	def shift(force):
-		"""calc weight shift on each wheel as function of total braking force"""
-		return (force * bike.cog_height) / bike.wheelbase
-
-	rear_df = lambda force: bike.rear_downforce() + shift(force)
-	front_df = lambda force: bike.front_downforce() - shift(force)
-
-	def amin(a, alim):
+	def clip_mag(a, alim):
 		"""cap magnitude"""
 		alim = np.maximum(alim, 0)
 		return np.clip(a, -alim, +alim)
 
-	import scipy.optimize
-	root = lambda root, x0: scipy.optimize.root_scalar(root, x0=x0).root
-
 	def virtual_abs(rf, ff):
-		rearforce = lambda force: amin(rf, rear_df(force) * bike.Cf)
-		frontforce = lambda force: amin(ff, front_df(force) * bike.Cf)
-		balance = lambda force: rearforce(force) + frontforce(force) - force
-		return root(balance, bike.downforce*bike.Cf)
-	force = [virtual_abs(r, f) for r, f in zip(
-		rearforce, frontforce)]
-
-	stoppie = root(rear_df, bike.downforce/2)
-	wheelie = root(front_df, bike.downforce/2)
-	return np.clip(force, stoppie, wheelie)
-
-
+		"""solve for total traction over both wheels"""
+		rear_t_force = lambda t_force: clip_mag(rf, bike.shifted_rear_downforce(t_force) * bike.load.Cf)
+		front_t_force = lambda t_force: clip_mag(ff, bike.shifted_front_downforce(t_force) * bike.load.Cf)
+		balance = lambda t_force: rear_t_force(t_force) + front_t_force(t_force) - t_force
+		return root(balance, rf+ff)
+	force = [virtual_abs(r, f) for r, f in zip(rearforce, frontforce)]
+	return np.clip(force, bike.stoppie, bike.wheelie)
