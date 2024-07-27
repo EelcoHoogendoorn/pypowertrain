@@ -9,22 +9,26 @@ Summary
 This package implements functionality for the simulation and optimization of electric powertrains with field-oriented controllers. It seeks to be a repository of well-characterized components, making their performance easy to evaluate in combination.
 
 ```python
-def test_example(kmh=40, inch=24):
+def test_example(kmh=40, inch=20):
 	"""Simple minimal example"""
-	bike = Bike(
-		front=None,
-		rear=Actuator(
+	bike = BikeSystem(
+		load=BikeLoad(
+			CdA=0.7 * 0.8,
+			Cr=0.004,
+			structure_weight=40,
+			rider_weight=80,
+			nominal_kmh=kmh,
+			wheel_diameter=inch * 25.4e-3,
+			front=True, rear=True,
+		),
+		actuator=Actuator(
 			motor=grin.all_axle(turns=8),
 			controller=odrive.pro(),
 		),
 		battery=define_battery_limits(v=58, wh=500),
-		CdA=0.7 * 0.8,
-		Cr=0.004,
-		structure_weight=15,
-		nominal_kmh=kmh,
-		wheel_diameter=inch * 25.4e-3
 	)
-	bike_plot(bike)
+
+	system_plot(bike)
 ```
 <img src="./grin_with_odrive.png" width="400" height="300"/>
 
