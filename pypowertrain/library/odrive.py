@@ -169,7 +169,7 @@ def botwheel():
 
 	mass = Mass.from_absolute(geometry=geometry, total=2.2-0.2)	# subtract rubber wheel?
 
-	thermal = shelled_thermal(mass, tire=True)
+	thermal = shelled_thermal(mass, rim_exposure=0.0)
 	return Motor(
 		electrical=electrical,
 		thermal=thermal,

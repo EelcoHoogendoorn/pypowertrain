@@ -90,6 +90,14 @@ class System(Base):
 		return 'rpm', rpm
 	def y_axis(self, nm=0):
 		return 'Nm', nm
+	def x_axis_forward(self, rpm):
+		return rpm
+	def y_axis_forward(self, nm):
+		return nm
+	def x_axis_inverse(self, rpm):
+		return rpm
+	def y_axis_inverse(self, nm):
+		return nm
 
 	def temperatures(self, rpm, copper_loss, iron_loss, dt, key='coils'):
 		mps = rpm * 0	# by default, no link between rpm and free stream velocity
@@ -216,8 +224,8 @@ def system_detect_limits(system, fw=1.3, frac=0.95, padding=1.1):
 	_, _, _, _, _, _, torque = system_limits(system, trange, rpm)
 	max_torque = np.max(np.abs(np.nan_to_num(torque)))
 	max_rpm = rpm[::-1][np.argmin(np.mean(np.isnan(torque), axis=0)[::-1] > frac)]
-	max_rpm = round((max_rpm) * padding, 2)
-	max_torque = round((max_torque) * padding, 2)
+	max_rpm = system.x_axis_inverse(round(system.x_axis_forward(max_rpm) * padding, 2))
+	max_torque = system.y_axis_inverse(round(system.y_axis_forward(max_torque) * padding, 2))
 	return max_rpm, max_torque
 
 
@@ -244,7 +252,7 @@ def system_plot(
 	dissipation = copper_loss + iron_loss
 	efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
 
-	acceleration = system.acceleration(rpm_range, torque)
+	acceleration = system.acceleration(system.x_axis_forward(rpm_range), torque)
 
 	# construct thermal curves
 	thermal_specs = [

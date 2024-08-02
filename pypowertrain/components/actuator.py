@@ -59,7 +59,7 @@ class Actuator(Base):
 		"""build motor temp graphs from heat source/sink graphs"""
 		circumferential = rpm / 60 * self.motor.geometry.gap_circumference
 		def process_speed(i):
-			thermal = self.motor.thermal.replace(	# appropriately scale forced convection terms
+			thermal = self.motor.thermal.replace(
 				conductivity__linear=np.abs(mps[i]),
 				conductivity__circumferential=np.abs(circumferential[i])
 			)
@@ -70,7 +70,7 @@ class Actuator(Base):
 		return np.array([process_speed(i) for i in range(len(mps))]).T
 
 	def plot(self, ax=None):
-		"""graphical representation of motor and controller in relation"""
+		"""graphical representation of motor and controller in relation to one another"""
 		import matplotlib.pyplot as plt
 		from matplotlib.collections import LineCollection
 

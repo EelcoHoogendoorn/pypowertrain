@@ -7,6 +7,9 @@ import scipy.optimize
 root = lambda root, x0: scipy.optimize.root_scalar(root, x0=x0).root
 root_b = lambda root, b: scipy.optimize.root_scalar(root, bracket=b, method='bisect').root
 
+def rot(a):
+	c, s =np.cos(a), np.sin(a)
+	return np.array([[c, s], [-s, c]])
 
 @dataclass
 class BikeLoad(Load):
@@ -25,14 +28,11 @@ class BikeLoad(Load):
 
 	front: bool = False		# only do identical motors for now
 	rear: bool = True
+	grade: float = 0
 
 	@property
 	def n_motors(self):
 		return (1 if self.front else 0) + (1 if self.rear else 0)
-
-	@property
-	def wheelbase(self):
-		return self.cog_rear + self.cog_front
 
 	@property
 	def wheel_radius(self):
@@ -53,6 +53,27 @@ class BikeLoad(Load):
 		return kph * 1000 / 60 / self.wheel_circumference
 	def rpm_to_kph(self, rpm):
 		return rpm / 1000 * 60 * self.wheel_circumference
+
+	@property
+	def radians(self):
+		return np.arctan(self.grade / 100)
+
+	# @property
+	# def cog_shift(self):
+	# 	return np.cos(self.radians)
+	@property
+	def cog_front_eff(self):
+		return np.dot(rot(self.radians), [self.cog_front, +self.cog_height])[0]
+	@property
+	def cog_rear_eff(self):
+		return np.dot(rot(self.radians), [self.cog_rear, -self.cog_height])[0]
+	@property
+	def wheelbase(self):
+		return (self.cog_rear + self.cog_front)
+
+	@property
+	def wheelbase_eff(self):
+		return (self.cog_rear_eff + self.cog_front_eff)
 
 
 
@@ -75,6 +96,8 @@ class BikeLoad(Load):
 			dcc.Slider(0, 1, 0.1, value=self.cog_front, id='cog-front-slider'),
 			html.Label('Cf'),
 			dcc.Slider(0.1, 1.2, 0.1, value=self.Cf, id='cf-slider'),
+			html.Label('Grade'),
+			dcc.Slider(-40, +40, 4, value=self.grade, id='grade-slider'),
 
 			dcc.Checklist(['Front'], value=['Front'], id='front-check'),
 			dcc.Checklist(['Rear'], value=['Rear'], id='rear-check'),
@@ -93,13 +116,14 @@ class BikeLoad(Load):
 			Input('cog-rear-slider', 'value'),
 			Input('cog-front-slider', 'value'),
 			Input('cf-slider', 'value'),
+			Input('grade-slider', 'value'),
 
 			Input('front-check', 'value'),
 			Input('rear-check', 'value'),
 		)
 		def compute_handler_system(
 				weight, CdA, Cr, wheel,
-				cog_height, cog_rear, cog_front, cf,
+				cog_height, cog_rear, cog_front, cf, grade,
 				front, rear,
 		):
 			return pickle_encode(self.replace(
@@ -111,6 +135,7 @@ class BikeLoad(Load):
 				cog_rear=cog_rear,
 				cog_front=cog_front,
 				Cf=cf,
+				grade=grade,
 				front='Front' in front,
 				rear='Rear' in rear,
 			))
@@ -129,25 +154,25 @@ class BikeSystem(System):
 		rho = 1.225
 		return (1 / 2) * rho * self.load.CdA * mps * np.abs(mps)
 
-	def gravity_drag(self, grade):
-		return self.downforce * np.sin(np.arctan(grade))
+	def gravity_drag(self):
+		return self.downforce * np.sin(-self.load.radians)
 
 	def rolling_drag(self, mps):
 		return self.load.Cr * self.downforce * np.sign(mps)
 
-	def drag(self, rpm, grade=0):
-		mps = self.load.rpm_to_kph(rpm) / 3.6
-		return self.rolling_drag(mps) + self.aero_drag(mps) - self.gravity_drag(grade)
+	def drag(self, kmh):
+		mps = kmh / 3.6
+		return self.rolling_drag(mps) + self.aero_drag(mps) - self.gravity_drag()
 
 	@property
 	def downforce(self):
 		return self.weight * 9.81
 	@property
 	def rear_downforce(self):
-		return self.downforce * self.load.cog_front / self.load.wheelbase
+		return self.downforce * self.load.cog_front_eff / self.load.wheelbase_eff
 	@property
 	def front_downforce(self):
-		return self.downforce * self.load.cog_rear / self.load.wheelbase
+		return self.downforce * self.load.cog_rear_eff / self.load.wheelbase_eff
 	def shift(self, t_force):
 		"""calc weight shift on each wheel as function of total traction force"""
 		return (t_force * self.load.cog_height) / self.load.wheelbase
@@ -175,9 +200,9 @@ class BikeSystem(System):
 		# fixme need to add rotational inertia to load
 		return nm_per_motor * self.load.n_motors / self.load.wheel_radius / self.weight / 9.81
 
-	def acceleration(self, rpm, torque):
+	def acceleration(self, kmh, torque):
 		"""acceleration in G"""
-		net_torque_per_motor = torque - self.drag(rpm) * self.load.wheel_radius / self.load.n_motors
+		net_torque_per_motor = torque - self.drag(kmh) * self.load.wheel_radius / self.load.n_motors
 		x, y = self.traction_efficiency
 		eff = np.interp(net_torque_per_motor / self.load.wheel_radius, x, y)
 		return self.nm_to_g(net_torque_per_motor * eff)
@@ -199,6 +224,10 @@ class BikeSystem(System):
 	# def y_axis(self, nm=None):
 	# 	"""Acceleration of the bike"""
 	# 	return 'G', self.nm_to_g(nm)
+	def x_axis_forward(self, rpm):
+		return self.load.rpm_to_kph(rpm)
+	def x_axis_inverse(self, kph):
+		return self.load.kph_to_rpm(kph)
 
 
 def bike_stats(bike):

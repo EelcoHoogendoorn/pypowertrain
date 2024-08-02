@@ -13,7 +13,7 @@ si_steel_k = 28
 alu_k = 180	# cast alloy?
 mag_k = 100 # cast alloy
 air_k = 2.88e-2 # @ 60C
-ferrofluid_k = 0.45
+ferrofluid_k = 0.45		# this is a bulk value
 
 
 def radiative_k(ta, tb, eps=1.0):
@@ -47,12 +47,12 @@ def generic_capacity(mass: Mass):
 def basic_conductivity(geometry, K0, Kc, Kl, linear, circumferential):
 	# NOTE: triplets are constant, radial and linear velocity scaled components
 	attrs = {
-		'coils_stator': (10, ),	# generic big number; only seperate them because API calls for it
+		'coils_stator': (10, ),	# generic big number; only seperate coils and stator because API calls for it
 		'stator_air': (K0, K0+Kc, K0+Kl),
 	}
 
 	scalings = {
-		'coils_stator': {'coils_contact_area': 1, 'coil_thickness': -1},
+		'coils_stator': {'coils_contact_area': 1, 'coil_thickness': -1},	# FIXME: volume: 1, thickness: -2 instead?
 		'stator_air': {'coils_contact_area': 1},
 	}
 
@@ -79,30 +79,31 @@ class ShelledConductivity(Conductivity):
 	"""
 
 	@staticmethod
-	def from_mixed(geometry, statorade=False, vented=False, potted=False, painted=0.4,
-				 tire=False, block=0.25):
+	def from_mixed(
+			geometry,
+			# statorade=False, vented=False, potted=False, painted=0.4, tire=False, block=0.25,
+			statorade = 1.0,
+			side_exposure = 1.0,		# weighting factor; how much of the motor is exposed to free stream velocity
+			rim_exposure = 1.0,
+			vented = 0.0,
+			potted = 1.0,
+			emissivity = 1.0,
+	):
 		"""Set from dimensionless attributes, so that it scales with motor design"""
-		gap_air = air_k
-
-		gap_ferro = ferrofluid_k if statorade else 0
-		gap_radiation = radiative_k(80, 40, eps=painted)
-
-		# turbulent_k = 60	# large-gap air conductivity isnt laminar
-		# h = turbulent_k
+		gap_radiation = radiative_k(80, 40)
+		shell_radiation = radiative_k(80, 40) * 2	# 2 shells
 
 		# https://www.engineeringtoolbox.com/convective-heat-transfer-d_430.html
 		# empirical fits puts our convective curve slope much higher than above;
 		# but above does not account for active stirring effects
 		# https://ebikes.ca/documents/BionX_Statorade_Study.pdf
-		h0, h1 = 25*2, 5.0*2
-		coils = 20 if potted else 5	# hard to model ab initio; just tuned to typical temp diff in experiments
-		shell_radiation = radiative_k(80, 40, eps=painted)
+		h0, h1 = 25*2, 2.0*2
 
-		rim = 0 if tire else 0.5	# 0.5 since only one rim
-		venting = 100 if vented else 0
-		w = 1 - block	# correction factor for blockage of free stream linear airflow
-		f = 1.0 if tire else 1.4		# flange factor
-		# w = 0.7
+		# rim = 0 if tire else 0.5	# 0.5 since only one rim
+		# rim = rim_exposure / 2
+		# venting = 100 if vented else 0
+		# w = 1 - block	# correction factor for blockage of free stream linear airflow
+		f = 1.0		# flange factor; side plate is bigger than rotor side area
 		# stator->shell / r goes from 2.5 to 3.5 0-50kph
 		# shell->air r+v goes 4.5-14.5 0-50kph
 		# https://endless-sphere.com/sphere/threads/definitive-tests-on-the-heating-and-cooling-of-hub-motors.48753/post-1095860
@@ -122,37 +123,56 @@ class ShelledConductivity(Conductivity):
 
 		# NOTE: triplets are constant, radial and linear velocity scaled components
 		attrs = {
-			'coils_stator': (coils,),
-			'stator_rotor_air': (gap_air,),	# at low rpm and <1mm gaps, laminar flow and no dependence on speed
-			'stator_rotor_ff': (gap_ferro, gap_ferro/15),	# presumed speed effect; doubling at 15m/s
+			# hard to model coil-stator contact ab initio; just tuned to typical temp diff in experiments
+			'coils_stator_direct': (5,),
+			'coils_stator_potting': (10,),
+			# at low rpm and <1mm gaps, laminar flow and no dependence on speed
+			'stator_rotor_air': (air_k,),
+			# dont we need fill factor accounting at low speed? as long as rotating at all, full surface wetted by oil layer of ferro_k?
+			'stator_rotor_ff': (ferrofluid_k, ferrofluid_k/15),	# presumed speed effect; doubling at 15m/s
 			'stator_rotor_rad': (gap_radiation,),
+			# stator surface area is smaller than shell, but its a standin for all internal structures, which face the shell with an area similar to the shell
+			'stator_shell_rad': (shell_radiation,),
+			# assumed that diffusion to the shell is mostly limited by iron path. seems to fit the data?
 			'rotor_shell': (iron_k,),
 			'inner_stator': (h0, h1),
 			'inner_shell': (h0, h1*0.6),
-			'shell_air': (h0*f, h1*f, h1*f*w),
-			'rotor_air': (h0*rim, h1*rim, h1*rim*w),
-			'inner_air': (venting, venting / 10 / 2, venting/10*w),
-			'stator_shell': (shell_radiation,),
+			'shell_air': (h0*f, h1*f, h1*f),
+			'rotor_air': (h0, h1, h1),
+			'inner_air': (100, 5, 10),		# coupling between inner and outer air
 		}
 
 		scalings = {
-			'coils_stator': {'coils_contact_area': 1, 'coil_thickness': -1},
+			'coils_stator_direct': {'coils_contact_area': 1, 'coil_thickness': -1},
+			'coils_stator_potting': {'coils_contact_area': 1, 'coil_thickness': -1, 'potted': 1},
 			'stator_rotor_air': {'gap_area': 1, 'airgap': -1},  # laminar flow
-			'stator_rotor_ff': {'gap_area': 1, 'airgap': -1},
-			'stator_rotor_rad': {'gap_area': 1},
+			'stator_rotor_ff': {'gap_area': 1, 'airgap': -1, 'statorade': 1},
+			'stator_rotor_rad': {'gap_area': 1, 'emissivity': 1},
+			'stator_shell_rad': {'side_area': 1, 'emissivity': 1},
 			'rotor_shell': {'rotor_volume': 1, 'length': -2},
 			'inner_shell': {'side_area': 1},
 			'inner_stator': {'side_area': 1},
 			'shell_air': {'side_area': 1},
-			'rotor_air': {'gap_area': 1},
-			'inner_air': {'side_area': 1},
-			'stator_shell': {'side_area': 1},
+			'rotor_air': {'gap_area': 1, 'rim_exposure': 1},
+			'inner_air': {'side_area': 1, 'vented': 1},
 		}
 
 		scalings, attrs = Conductivity.expand(scalings, attrs)
 
-		return Conductivity.init(
+		# this scaling with side exposure is only intended to block free stream velocity
+		scalings['inner_air_v']['side_exposure'] = 1
+		scalings['rotor_air_v']['side_exposure'] = 1
+		scalings['shell_air_v']['side_exposure'] = 1
+
+		return ShelledConductivity.init(
 			geometry=geometry, context=['geometry'], scaling=scalings,
+			statorade=statorade,
+			side_exposure=side_exposure,  # weighting factor; how much of the motor is exposed to free stream velocity
+			rim_exposure=rim_exposure,
+			vented=vented,
+			potted=potted,
+			emissivity=emissivity,
+
 		).from_dimensionless(attrs)
 
 

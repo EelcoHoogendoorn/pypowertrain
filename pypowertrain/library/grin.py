@@ -3,7 +3,7 @@ from pypowertrain.components.controller import *
 from pypowertrain.components.motor import *
 
 
-def all_axle(turns=5, statorade=True, tire=False):
+def all_axle(turns=5, statorade=True):
 	"""https://ebikes.ca/amfile/file/download/file/308/product/1859/
 	"""
 	# grin fast
@@ -47,7 +47,7 @@ def all_axle(turns=5, statorade=True, tire=False):
 
 	return Motor(
 		electrical=electrical,
-		thermal=shelled_thermal(mass, statorade=statorade, tire=tire),
+		thermal=shelled_thermal(mass, statorade=statorade),
 		mass=mass,
 	)
 

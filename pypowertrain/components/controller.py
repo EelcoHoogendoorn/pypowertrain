@@ -20,6 +20,7 @@ class Controller(Base):
 
 	ripple_freq: float
 	freq_limit: float	# e freq hz
+	# FIXME: add dropdown options? also include trapezoidal modulation, plus associated harmonic losses?
 	modulation_factor: float = 1 / np.sqrt(3) * 0.95
 	field_weakening: bool = True
 

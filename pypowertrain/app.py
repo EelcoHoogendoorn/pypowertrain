@@ -29,37 +29,37 @@ def get_contour(X, Y, data):
 	return c
 
 
-def calc_stuff(system, rpm_range, torque_range, thermal_specs):
+def calc_stuff(system, x_range, y_range, thermal_specs):
 	"""do heavy calcs on system"""
 	# eval the system performance graphs
-
+	rpm_range = system.x_axis_inverse(x_range)
+	torque_range = system.y_axis_inverse(y_range)
 	graphs = system_limits(system, torque_range, rpm_range).astype(np.float32)
 	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = graphs
 
 	dissipation = copper_loss + iron_loss
 	# efficiency = 1 - dissipation / np.abs(bus_power)
 	efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
-	acceleration = system.acceleration(rpm_range, torque)
+	acceleration = system.acceleration(x_range, torque)
 
-	x, X = system.x_axis(rpm_range)
-	y, Y = system.y_axis(torque_range)
+	get_contour = lambda v: get_contour(x_range, y_range)
 
 	# construct thermal curves
 	thermal_contours = {
-		s['color']: get_contour(X, Y, system.temperatures(
+		s['color']: get_contour(system.temperatures(
 			rpm_range, copper_loss, iron_loss, dt=s['dt']) - s['dT'])
 		for s in thermal_specs
 	}
 
 	name, lines = system.acceleration_lines()
-	acceleration_contours = {name.format(float(ll)): get_contour(X, Y, acceleration - ll) for ll in lines}
+	acceleration_contours = {name.format(float(ll)): get_contour(acceleration - ll) for ll in lines}
 
 	q = np.where(Id == 0, 1, np.nan_to_num(Id, nan=-1))
 	import skimage.filters
 	fw_lim = skimage.filters.gaussian(q, [3, 1]) + Id * 0
-	fw_lim_contour = get_contour(X, Y, fw_lim + 3)
+	fw_lim_contour = get_contour(fw_lim + 3)
 
-	efficiency_contour = get_contour(X, Y, efficiency - 0.9)
+	efficiency_contour = get_contour(efficiency - 0.9)
 
 	contours = thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour
 	return graphs, contours
@@ -84,10 +84,8 @@ def plot_contour(fig, contours, color="rgba(0,0,0,1)", name=''):
 
 def system_dash(
 	system: System,
-	n_rpm=50,
-	n_torque=51,
-	max_rpm=None,
-	max_torque=None,
+	n_x=50,
+	n_y=51,
 	targets=None,
 ):
 	"""dash plotly app
@@ -96,6 +94,15 @@ def system_dash(
 	then add a button to do some grad descent within the bounds given by the slider
 
 	https://dash.plotly.com/sharing-data-between-callbacks
+
+	FIXME: we cannot remove callbacks dynamically. this means we cannot have a thermal config tab,
+	 and allow switching motors with different thermal models at the same time.
+	 or would pattern matching callbacks make it possible? dunno
+	 perhaps just add tabs for all thermal model types in motor list; and hide/show as appropriate?
+
+	FIXME: can we do A/B comparison app? i thnk it requires seperate app of sorts
+	  should prob modularize things; two tabs with two independent systems
+	  or partially independent systems; might want to keep some parts in sync, like load params?
 
 	"""
 
@@ -149,6 +156,17 @@ def system_dash(
 		data=thermal_specs,
 		editable=True
 	)
+	x_key, _ = system.x_axis(0)
+	y_key, _ = system.y_axis(0)
+	limits_table = dash_table.DataTable(
+		id='table-limits',
+		columns=([
+			{'id': 'x', 'name': x_key, 'type': 'numeric'},
+			{'id': 'y', 'name': y_key, 'type': 'numeric'},
+		]),
+		data=[{'x': 1, 'y': 1}],
+		editable=False
+	)
 	# stats_table = dash_table.DataTable()
 
 	load_tab = system.load.dash_tab()
@@ -185,14 +203,42 @@ def system_dash(
 		dcc.Slider(1, 20, 1, value=system.battery.P, id='P-slider'),
 		html.Label('Battery S'),
 		dcc.Slider(1, 20, 1, value=system.battery.S, id='S-slider'),
-		html.Div(id='battery-weight-label'),
+		# html.Div(id='battery-weight-label'),
+		html.Div(id='battery-props-label', style={'whiteSpace': 'pre-wrap'}),
+
 	])
+	# FIXME: this is specific to the shelled thermal model
+	#  which not all motors use. prob best to make app code more modular; so there can be broad motor-controller comparison functionality,
+	#  as well as a different app for tuning a specific motor?
+	thermal_tab = dbc.Tab(label='Thermal', children=[
+		html.Label('Statorade'),
+		dcc.Slider(0.0, 1.0, 1, value=system.actuator.motor.thermal.conductivity.statorade, id='statorade-slider'),
+		html.Label('Vented'),
+		dcc.Slider(0.0, 1.0, 1, value=system.actuator.motor.thermal.conductivity.vented, id='vented-slider'),
+		html.Label('Potted'),
+		dcc.Slider(0.0, 1.0, 1, value=system.actuator.motor.thermal.conductivity.potted, id='potted-slider'),
+		html.Label('Emissivity'),
+		dcc.Slider(0.0, 1.0, 1, value=system.actuator.motor.thermal.conductivity.emissivity, id='emissivity-slider'),
+		html.Label('Rim exposure'),
+		dcc.Slider(0.0, 1.0, 1, value=system.actuator.motor.thermal.conductivity.rim_exposure, id='rim-exp-slider'),
+		html.Label('Flow exposure'),
+		dcc.Slider(0.0, 1.0, .1, value=system.actuator.motor.thermal.conductivity.side_exposure, id='side-exp-slider'),
+	])
+	fw_options = ['Field weakening']
 	controller_tab = dbc.Tab(label='Controller', children=[
 		html.Label('Controller'),
 		dcc.Dropdown(list(controllers.keys()), '', id='dropdown-controller'),
-		dcc.Checklist(options=['Field weakening'], value=['Field weakening'], id='field-weakening'),
+		dcc.Checklist(options=fw_options, value=fw_options, id='field-weakening'),
 		html.Label('Number of controllers'),
 		dcc.Slider(1, 5, 1, value=system.actuator.n_series, id='n_series-slider'),
+		dbc.Label('Voltage'),
+		dbc.Input(value=system.actuator.controller.modulation_factor, type='number', id='c-voltage-input', min=0, max=200, step=1),
+		dbc.Label('Power'),
+		dbc.Input(value=system.actuator.controller.modulation_factor, type='number', id='c-power-input', min=0, max=20000, step=500),
+		dbc.Label('Modulation'),
+		dbc.Input(value=system.actuator.controller.modulation_factor, type='number', id='c-modulation-input', min=0.5, max=1, step=0.01),
+		dbc.Label('Frequency limit'),
+		dbc.Input(value=system.actuator.controller.freq_limit, type='number', id='c-freq-input', min=100, max=10000, step=100),
 	])
 	visual_tab = dbc.Tab(label='Visual', children=[
 		html.Label('Plot types'),
@@ -203,14 +249,15 @@ def system_dash(
 		dcc.Checklist(options=overlays, value=overlays, id='check-overlay', labelStyle={'display': 'block'},),
 		html.Label('Automatic plot bound rescaling'),
 		dcc.Checklist(options=['Rescale'], value=['Rescale'], id='rescale'),
+		# FIXME: if no rescale, enable limits editor
+		limits_table,
 		html.Label('Simulation resolution'),
 		dcc.Slider(1, 4, 1, value=1, id='resolution-slider'),
 		html.Label('Thermal curve specification'),
 		thermal_table,
 		html.Div(id='debug'),
-		html.Label('Mirroring'),
-		dcc.Checklist(options=['x-axis'], value=[], id='x-check'),
-		dcc.Checklist(options=['y-axis'], value=['y-axis'], id='y-check'),
+		html.Label('Negative axis'),
+		dcc.Checklist(options=['x-axis', 'y-axis'], value=['y-axis'], id='axes-check'),
 	])
 
 	graph_tab = dbc.Tab(label='Graph', children=[
@@ -242,6 +289,7 @@ def system_dash(
 				dbc.Col(
 					dbc.Tabs([
 						motor_tab,
+						thermal_tab,
 						battery_tab,
 						controller_tab,
 						load_tab,
@@ -254,6 +302,8 @@ def system_dash(
 
 		# dcc.Store(id='coarsedata'),		# FIXME: split this more granular? sep arrays? coarse and fine?
 		dcc.Store(id='load'),		# also split other subcomponents into substore.
+		dcc.Store(id='controller_og'),
+		dcc.Store(id='controller'),
 		dcc.Store(id='system'),
 		dcc.Store(id='ranges'),
 		dcc.Store(id='graphdata'),
@@ -261,6 +311,54 @@ def system_dash(
 
 	# add the load callback
 	system.load.dash_callback()
+
+	@callback(
+		Output('controller_og', 'data'),
+		Output('field-weakening', 'value'),
+		Output('c-voltage-input', 'value'),
+		Output('c-power-input', 'value'),
+		Output('c-modulation-input', 'value'),
+		Output('c-freq-input', 'value'),
+
+		Input('dropdown-controller', 'value'),
+	)
+	def compute_handler_controller(
+		controller,
+	):
+		controller = controllers.get(controller, system.actuator.controller)
+		ui = (
+			fw_options * controller.field_weakening,
+			controller.bus_voltage_limit,
+			controller.power_limit,
+			controller.modulation_factor,
+			controller.freq_limit,)
+		return (pickle_encode(controller),) + ui
+
+	@callback(
+		Output('controller', 'data'),
+
+		Input('controller_og', 'data'),
+		Input('field-weakening', 'value'),
+		Input('c-voltage-input', 'value'),
+		Input('c-power-input', 'value'),
+		Input('c-modulation-input', 'value'),
+		Input('c-freq-input', 'value'),
+	)
+	def compute_handler_controller_adjust(
+			controller, field_weakening, c_voltage, c_power, c_modulation, c_freq
+	):
+		try:
+			controller = pickle_decode(controller)
+		except:
+			controller = system.actuator.controller
+		controller = controller.replace(
+			field_weakening=bool(field_weakening),
+			bus_voltage_limit=c_voltage,
+			power_limit=c_power,
+			modulation_factor=c_modulation,
+			freq_limit=c_freq,
+		)
+		return pickle_encode(controller)
 
 	@callback(
 		Output('system', 'data'),
@@ -278,8 +376,7 @@ def system_dash(
 		Input('P-slider', 'value'),
 		Input('S-slider', 'value'),
 
-		Input('dropdown-controller', 'value'),
-		Input('field-weakening', 'value'),
+		Input('controller', 'data'),
 		Input('n_series-slider', 'value'),
 
 		Input('load', 'data'),
@@ -287,7 +384,7 @@ def system_dash(
 	def compute_handler_system(
 			motor, turns, radius, slot_depth, length, slot_width, reluctance, frequency,
 			charge, P, S,
-			controller, field_weakening, n_series,
+			controller, n_series,
 			load,
 	):
 		"""Put all modifiers to the system object here"""
@@ -295,11 +392,9 @@ def system_dash(
 		sysr = system
 		if motor:
 			sysr = sysr.replace(__motor=motors[motor])
-		if controller:
-			sysr = sysr.replace(__controller=controllers[controller])
+
+		controller = pickle_decode(controller)
 		sysr = sysr.replace(
-			# __motor=motors[motor],
-			# __controller=controllers[controller],
 			load=pickle_decode(load),
 		).replace(
 			__geometry__turns=turns,
@@ -309,13 +404,40 @@ def system_dash(
 			__geometry__slot_width_scale=slot_width,
 			__geometry__reluctance_scale=reluctance,
 			__geometry__frequency_scale=frequency,
+
 			battery__charge_state=charge,
 			battery__P=P,
 			battery__S=S,
-			__controller__field_weakening=bool(field_weakening),
+
+			__controller=controller,
 			actuator__n_series=n_series,
 		)
 		return pickle_encode(sysr)
+
+	@callback(
+		Output('thermal', 'data'),
+
+		Input('statorade-slider', 'value'),
+		Input('vented-slider', 'value'),
+		Input('potted-slider', 'value'),
+		Input('emissivity-slider', 'value'),
+		Input('rim-exp-slider', 'value'),
+		Input('side-exp-slider', 'value'),
+
+	)
+	def compute_handler_thermal(
+			statorade, vented, potted, emissivity, rim_exp, side_exp,
+	):
+		thermal = system.actuator.thermal
+		thermal = thermal.replace(
+			conductivity__statorade=statorade,
+			conductivity__vented=vented,
+			conductivity__potted=potted,
+			conductivity__emissivity=emissivity,
+			conductivity__rim_exposure=rim_exp,
+			conductivity__side_exposure=side_exp,
+		)
+		return pickle_encode(thermal)
 
 
 	@callback(
@@ -331,36 +453,58 @@ def system_dash(
 			f'L: \t\t {system.actuator.motor.electrical.L*1000:0.3f} \tmH'
 
 	@callback(
-		Output('battery-weight-label', 'children'),
+		Output('battery-props-label', 'children'),
 		Input('system', 'data'),
 	)
-	def compute_handler_battery_weight(system):
+	def compute_handler_battery_props(system):
 		system = pickle_decode(system)
-		return f'Weight: {system.battery.weight:0.3f} kg'
+		return \
+			f'Weight:\t {system.battery.weight:0.3f} \t kg\n' \
+			f'Voltage:\t {system.battery.voltage:0.1f} \t V\n' \
+			f'Capacity:\t {system.battery.capacity:0.0f} \t wh\n'
+
+
+	@callback(
+		Output('table-limits', 'editable'),
+
+		Input('rescale', 'value'),
+	)
+	def compute_handler_rescale(rescale):
+		return not bool(rescale)
+
+	@callback(
+		Output('table-limits', 'data'),
+
+		Input('system', 'data'),
+		Input('rescale', 'value'),
+	)
+	def compute_handler_rescale(system, rescale):
+		"""update range estimates"""
+		if rescale:
+			system = pickle_decode(system)
+			max_x, max_y = system_detect_limits(system, fw=1.3)
+			return [{
+				'x': system.x_axis_forward(max_x),
+				'y': system.y_axis_forward(max_y)
+			}]
+
+		return dash.no_update
 
 	@callback(
 		Output('ranges', 'data'),
 
-		Input('system', 'data'),
-		Input('rescale', 'value'),
+		Input('table-limits', 'data'),
 		Input('resolution-slider', 'value'),
-		Input('x-check', 'value'),
-		Input('y-check', 'value'),
-
+		Input('axes-check', 'value'),
 	)
-	def compute_handler_ranges(system, rescale, resolution, x_check, y_check):
+	def compute_handler_ranges(limits, resolution, axes):
 		"""update range estimates"""
-		_n_rpm = n_rpm * resolution
-		_n_torque = n_torque * resolution
+		max_x = limits[0]['x']
+		max_y = limits[0]['y']
 
-		if rescale:
-			system = pickle_decode(system)
-			max_rpm, max_torque = system_detect_limits(system, fw=1.3)
-			rpm_range = np.linspace(-max_rpm * (1 if 'x-axis' in x_check else 0), max_rpm, _n_rpm, endpoint=True)
-			torque_range = np.linspace(-max_torque * (1 if 'y-axis' in y_check else 0), +max_torque, _n_torque, endpoint=True)
-			return jsonpickle.dumps((rpm_range, torque_range))
-
-		return dash.no_update
+		x_range = np.linspace(-max_x * ('x-axis' in axes), +max_x, n_x * resolution, endpoint=True)
+		y_range = np.linspace(-max_y * ('y-axis' in axes), +max_y, n_y * resolution, endpoint=True)
+		return jsonpickle.dumps((x_range, y_range))
 
 
 	@callback(
@@ -375,14 +519,14 @@ def system_dash(
 
 		Input('system', 'data'),
 		Input('ranges', 'data'),
-		Input('table-thermal', 'data'),
+		Input('table-thermal', 'data'),	# could be its own thing
 	)
 	def compute_handler(sysr, ranges, thermals):
 		"""do motor calcs and write to data store"""
 		sysr = pickle_decode(sysr)
-		rpm_range, torque_range = jsonpickle.loads(ranges)
+		x_range, y_range = jsonpickle.loads(ranges)
 
-		res = calc_stuff(sysr, rpm_range, torque_range, thermals)
+		res = calc_stuff(sysr, x_range, y_range, thermals)
 		return jsonpickle.dumps(res)
 
 
@@ -429,26 +573,25 @@ def system_dash(
 		if not 'Graph' in plot_types: return go.Figure()
 		system = pickle_decode(system)
 
-		rpm_range, torque_range = jsonpickle.loads(ranges)
+		x_range, y_range = jsonpickle.loads(ranges)
 		graphs, contours = jsonpickle.loads(data)
 
 		copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = graphs
 		thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour = contours
 
 		dissipation = copper_loss + iron_loss
-		# efficiency = 1 - dissipation / np.abs(bus_power)
 		efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
-		acceleration = system.acceleration(rpm_range, torque)
+		acceleration = system.acceleration(x_range, torque)
 
-		x, X = system.x_axis(rpm_range)
-		y, Y = system.y_axis(torque_range)
+		x_label, _ = system.x_axis(0)
+		y_label, _ = system.y_axis(0)
 
 		import xarray as xr
 		def wrap(arr, name=''):
 			return xr.DataArray(
 				data=arr,
-				dims=[y, x],
-				coords={x: X, y: Y},
+				dims=[y_label, x_label],
+				coords={x_label: x_range, y_label: y_range},
 				name=name
 			)
 
@@ -487,7 +630,7 @@ def system_dash(
 
 		# add x axis
 		fig.add_trace(
-			go.Scatter(x=X, y=X*0, name='x-axis', mode='lines', line_color='gray', showlegend=False,)
+			go.Scatter(x=x_range, y=x_range*0, name='x-axis', mode='lines', line_color='gray', showlegend=False,)
 		)
 
 		if targets is not None:
@@ -502,8 +645,7 @@ def system_dash(
 			trace.update(marker=dict(size=12, line=dict(width=2, vcolor='DarkSlateGrey')))
 			fig.add_trace(trace)
 
-		# FIXME: move to declaration?
-		# fig.update_layout(margin=dict(b=0, t=0, l=0, r=0))
+		fig.update_layout(margin=dict(b=10, t=10, l=10, r=10))
 
 		return fig
 

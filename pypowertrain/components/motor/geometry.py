@@ -38,7 +38,6 @@ class Geometry(Base):
 	magnet_width_fraction: float = 0.9	# fraction of back iron width filled by magnets
 
 	structure_thickness: float = 3e-3	# outer shell and support structures
-	inrunner: bool = False
 	# freq: float = 1
 
 	@staticmethod
@@ -112,15 +111,12 @@ class Geometry(Base):
 	@property
 	def gap_radius(self):
 		return self.gap_diameter / 2
-		# return c / 2 / np.pi
 	@property
 	def gap_diameter(self):
 		return self.gap_circumference / np.pi
-		# return self.gap_radius * 2
 	@property
 	def gap_circumference(self):
 		return self.em_width * self.slots
-		# return self.gap_diameter * np.pi
 	@property
 	def gap_area(self):
 		return self.gap_circumference * self.gap_length
@@ -161,20 +157,33 @@ class Geometry(Base):
 	def back_iron_thickness(self):
 		return self.tooth_width / 2
 
+	# @property
+	# def outer_radius(self):
+	# 	rotor = self.airgap + self.magnet_height + self.back_iron_thickness
+	# 	# sign = -1 if self.inrunner else +1
+	# 	return self.gap_radius + rotor# * sign
+	# @property
+	# def inner_radius(self):
+	# 	stator = self.slot_depth + self.back_iron_thickness
+	# 	# sign = -1 if self.inrunner else +1
+	# 	return self.gap_radius - stator# * sign
+
 	@property
-	def outer_radius(self):
+	def slot_radius(self):
+		return self.gap_radius - self.slot_depth
+	@property
+	def stator_radius(self):
+		return self.slot_radius - self.back_iron_thickness
+	@property
+	def rotor_radius(self):
 		rotor = self.airgap + self.magnet_height + self.back_iron_thickness
-		sign = -1 if self.inrunner else +1
-		return self.gap_radius + rotor * sign
-	@property
-	def inner_radius(self):
-		stator = self.slot_depth + self.back_iron_thickness
-		sign = -1 if self.inrunner else +1
-		return self.gap_radius - stator * sign
+		return self.gap_radius + rotor
+	outer_radius = rotor_radius
+	inner_radius = stator_radius
+
 
 	# these are rough geometry-estimated values for various volumes
-	# the point of them isnt to be accurate; but to scale appropriately
-	# specific motors can tune to their actual values with a dimensionless coefficient
+	# the point of them isnt to be super accurate; but to scale appropriately
 	@property
 	def tooth_area(self):
 		"""tooth side area"""
@@ -193,7 +202,7 @@ class Geometry(Base):
 	@property
 	def slots_area(self):
 		"""combined area of all slots"""
-		A = (self.gap_radius ** 2 - (self.gap_radius - self.slot_depth) ** 2) * np.pi
+		A = np.abs(self.gap_radius ** 2 - self.slot_radius ** 2) * np.pi
 		return A - self.teeth_area
 	@property
 	def slot_area(self):
@@ -209,10 +218,6 @@ class Geometry(Base):
 	@property
 	def coils_volume(self):	# m^3
 		"""Full coil volume, without any fill-factors applied"""
-		# As = self.slots_area
-		# t = self.coil_thickness
-		# L = (self.gap_length + t) * 2 + (self.tooth_width + t) * 2
-		# return L * As
 		return self.slots_area * (self.length + self.ew_length) * 2
 	@property
 	def coils_volume_fill(self):	# m^3
@@ -231,7 +236,7 @@ class Geometry(Base):
 		return self.gap_area * self.magnet_height * self.magnet_width_fraction
 	@property
 	def back_volume(self):
-		return self.back_iron_thickness * self.outer_radius * self.gap_length
+		return self.back_iron_thickness * self.rotor_radius * self.gap_length
 	@property
 	def rotor_volume(self):
 		return self.back_volume + self.magnets_volume
@@ -239,9 +244,12 @@ class Geometry(Base):
 	def structure_volume(self):
 		# 2 outer plates, one interior hub plate?
 		# FIXME: split this into seperate hub and outer shell logic
+		# FIXME: quite bike-hub-motor specific; should be in mixin/subclass
 		return self.gap_radius**2*np.pi * self.structure_thickness * 3 + self.gap_area * self.structure_thickness
 	@property
 	def outer_length(self):
+		"""axial length, including outer shell"""
+		# FIXME: quite bike-hub-motor specific; should be in mixin/subclass
 		overhang = self.slot_width / 2
 		rest = overhang + self.airgap + self.structure_thickness
 		return self.gap_length + rest * 2
@@ -250,7 +258,7 @@ class Geometry(Base):
 		"""total amount of mu-0 reluctance in the circuit"""
 		return self.airgap + self.magnet_height
 
-	# FIXME: move below to electrical?
+	# FIXME: move below to electrical? they are pseudo-geometrical properties i guess
 	@property
 	def iron_field_scale(self):
 		"""scaling factor proportional to iron field density"""
@@ -279,7 +287,9 @@ class Geometry(Base):
 
 	def coil_ratios(self):
 		"""fraction of coils in slots vs end-turns"""
-		return loop_ratios(self.gap_length, self.tooth_width, self.coil_thickness)
+		# return loop_ratios(self.gap_length, self.tooth_width, self.coil_thickness)
+		return loop_ratios(self.gap_length, self.ew_length, 0)
+
 	def flux_ratios(self):
 		"""Fraction of EM-flux through airgap vs fringing at end-turns"""
 		# FIXME: paper does not explain this, but should be about em flux through air gap,
@@ -322,7 +332,6 @@ class Geometry(Base):
 
 		Returns: List[dict] of mpl.LineCollection compatible inputs
 		"""
-		assert self.inrunner is False		# FIXME: change this; not that much work
 
 		def rotate(angles, geo):
 			c, s = np.cos(angles), np.sin(angles)
@@ -346,15 +355,16 @@ class Geometry(Base):
 			geo = [[p[1:], b*g[0, 1]], [p[:-1], b*g[1,1]]]
 			return np.moveaxis(np.array(geo), 2, 0)
 
+		# FIXME: base tooth area estimate on this, so graphical and scaling laws match?
 		def halftooth(r, tip_width, tooth_width, em_width, tooth_depth, tip_depth):
 			"""construct tooth lines"""
 			ro = r
-			ri = r - tooth_depth - tip_depth
+			ri = r - tooth_depth - tip_depth	# slot-radius?
 			ao = 0, tip_width / ro
 			outer = rotate(np.linspace(*ao, 3, endpoint=True)[1:], [r, 0])
 			ai = tooth_width / ri, em_width / ro
 			inner = rotate(np.linspace(*ai, 3, endpoint=True), [ri, 0])
-			return list(outer) + [[r - tip_depth, tooth_width]] + list(inner)
+			return list(outer) + [[r - tip_depth, tooth_width]] + list(inner)	# fixme: tip-radius
 
 		def circle(r, n=360):
 			a = np.linspace(0, np.pi*2, n+1, endpoint=True)
@@ -385,7 +395,7 @@ class Geometry(Base):
 		geo = rotate(np.linspace(0, np.pi*2, poles, endpoint=False), magnet)
 		collections.append({'segments': geo, 'linewidths':2, 'colors': ['red', 'blue']*(poles//2)})
 
-		# eps = np.arctan(np.arcsin(magnet_width / self.gap_diameter))
+		# FIXME: make this a proper geo property?
 		rradius = np.sqrt(magnet_width**2+self.gap_diameter**2)/2
 		collections.append({'segments': [circle(rradius + self.airgap + self.magnet_height, poles)]})
 		collections.append({'segments': [circle(rradius + self.airgap + self.magnet_height + iron_depth, poles)]})
@@ -395,20 +405,6 @@ class Geometry(Base):
 		geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tooth)
 		collections.append({'segments': geo})
 		collections.append({'segments': [circle(radius - tooth_depth - tip_depth - iron_depth)]})
-		# tooth = square(
-		# 	[radius, tooth_width/2],
-		# 	[radius - tooth_depth - tip_depth, -tooth_width/2])
-		# geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tooth)
-		# collections.append({'segments': geo, 'linewidths':2})
-		#
-		# collections.append({'segments': [circle(radius - tooth_depth - tip_depth)]})
-		#
-		# tip_width = tooth_width + slot_width / 2
-		# tip = square(
-		# 	[radius, tip_width/2],
-		# 	[radius - tip_depth, -tip_width/2])
-		# geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tip)
-		# collections.append({'segments': geo, 'linewidths':2})
 
 		try:
 			a = np.linspace(0, np.pi * 2, slots, endpoint=False)
@@ -418,10 +414,6 @@ class Geometry(Base):
 				[radius - tooth_depth - tip_depth, -q / 2],
 				turns
 			)
-			# colors = [
-			# 	["salmon", "darkmagenta", "green"],
-			# 	["lightsalmon", "magenta", "lightgreen"]
-			# ]
 			colors = [
 				["#FF0000", "#00FF00", "#0000FF"],
 				["#AA0000", "#00AA00", "#0000AA"]
@@ -436,6 +428,25 @@ class Geometry(Base):
 		except:
 			pass
 		return collections
+
+
+# FIXME: make inrunner/outrunner mixin classes? to be combined with toroidal/normal mixins?
+
+@dataclass
+class Inrunner(Geometry):
+	@property
+	def slot_radius(self):
+		return self.gap_radius + self.slot_depth
+	@property
+	def stator_radius(self):
+		return self.slot_radius + self.back_iron_thickness
+	@property
+	def rotor_radius(self):
+		rotor = self.airgap + self.magnet_height + self.back_iron_thickness
+		return self.gap_radius - rotor
+	outer_radius = stator_radius
+	inner_radius = rotor_radius
+
 
 
 @dataclass
