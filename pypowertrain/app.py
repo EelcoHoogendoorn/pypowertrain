@@ -42,24 +42,24 @@ def calc_stuff(system, x_range, y_range, thermal_specs):
 	efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
 	acceleration = system.acceleration(x_range, torque)
 
-	get_contour = lambda v: get_contour(x_range, y_range)
+	get_cont = lambda v: get_contour(x_range, y_range, v)
 
 	# construct thermal curves
 	thermal_contours = {
-		s['color']: get_contour(system.temperatures(
-			rpm_range, copper_loss, iron_loss, dt=s['dt']) - s['dT'])
+		s['color']: get_cont(system.temperatures(
+			rpm_range, copper_loss, iron_loss, dt=s['dt'], key=s['key']) - s['dT'])
 		for s in thermal_specs
 	}
 
 	name, lines = system.acceleration_lines()
-	acceleration_contours = {name.format(float(ll)): get_contour(acceleration - ll) for ll in lines}
+	acceleration_contours = {name.format(float(ll)): get_cont(acceleration - ll) for ll in lines}
 
 	q = np.where(Id == 0, 1, np.nan_to_num(Id, nan=-1))
 	import skimage.filters
 	fw_lim = skimage.filters.gaussian(q, [3, 1]) + Id * 0
-	fw_lim_contour = get_contour(fw_lim + 3)
+	fw_lim_contour = get_cont(fw_lim + 3)
 
-	efficiency_contour = get_contour(efficiency - 0.9)
+	efficiency_contour = get_cont(efficiency - 0.9)
 
 	contours = thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour
 	return graphs, contours
@@ -118,9 +118,9 @@ def system_dash(
 	# flux_tooltip = 'Flux scaling, at equal field density. This increases magnet volume and tooth width, at equal iron field level'
 
 	thermal_specs = [
-		{'color': 'yellow', 'dt': 5000, 'dT': 60},
-		{'color': 'orange', 'dt': 60, 'dT': 60},
-		{'color': 'red', 'dt': 2, 'dT': 40},
+		{'color': 'yellow', 'dt': 5000, 'dT': 60, 'key': 'coils'},
+		{'color': 'orange', 'dt': 60, 'dT': 60, 'key': 'coils'},
+		{'color': 'red', 'dt': 2, 'dT': 40, 'key': 'coils'},
 	]
 
 	from pypowertrain.library import odrive, grin, moteus
@@ -164,7 +164,7 @@ def system_dash(
 			{'id': 'x', 'name': x_key, 'type': 'numeric'},
 			{'id': 'y', 'name': y_key, 'type': 'numeric'},
 		]),
-		data=[{'x': 1, 'y': 1}],
+		data=[{'x': 100, 'y': 100}],
 		editable=False
 	)
 	# stats_table = dash_table.DataTable()
@@ -249,7 +249,6 @@ def system_dash(
 		dcc.Checklist(options=overlays, value=overlays, id='check-overlay', labelStyle={'display': 'block'},),
 		html.Label('Automatic plot bound rescaling'),
 		dcc.Checklist(options=['Rescale'], value=['Rescale'], id='rescale'),
-		# FIXME: if no rescale, enable limits editor
 		limits_table,
 		html.Label('Simulation resolution'),
 		dcc.Slider(1, 4, 1, value=1, id='resolution-slider'),
@@ -302,6 +301,7 @@ def system_dash(
 
 		# dcc.Store(id='coarsedata'),		# FIXME: split this more granular? sep arrays? coarse and fine?
 		dcc.Store(id='load'),		# also split other subcomponents into substore.
+		dcc.Store(id='thermal'),
 		dcc.Store(id='controller_og'),
 		dcc.Store(id='controller'),
 		dcc.Store(id='system'),
@@ -311,6 +311,31 @@ def system_dash(
 
 	# add the load callback
 	system.load.dash_callback()
+
+	@callback(
+		Output('thermal', 'data'),
+
+		Input('statorade-slider', 'value'),
+		Input('vented-slider', 'value'),
+		Input('potted-slider', 'value'),
+		Input('emissivity-slider', 'value'),
+		Input('rim-exp-slider', 'value'),
+		Input('side-exp-slider', 'value'),
+
+	)
+	def compute_handler_thermal(
+			statorade, vented, potted, emissivity, rim_exp, side_exp,
+	):
+		thermal = system.actuator.motor.thermal
+		thermal = thermal.replace(
+			conductivity__statorade=statorade,
+			conductivity__vented=vented,
+			conductivity__potted=potted,
+			conductivity__emissivity=emissivity,
+			conductivity__rim_exposure=rim_exp,
+			conductivity__side_exposure=side_exp,
+		)
+		return pickle_encode(thermal)
 
 	@callback(
 		Output('controller_og', 'data'),
@@ -347,10 +372,7 @@ def system_dash(
 	def compute_handler_controller_adjust(
 			controller, field_weakening, c_voltage, c_power, c_modulation, c_freq
 	):
-		try:
-			controller = pickle_decode(controller)
-		except:
-			controller = system.actuator.controller
+		controller = pickle_decode(controller)
 		controller = controller.replace(
 			field_weakening=bool(field_weakening),
 			bus_voltage_limit=c_voltage,
@@ -380,12 +402,14 @@ def system_dash(
 		Input('n_series-slider', 'value'),
 
 		Input('load', 'data'),
+		Input('thermal', 'data'),
 	)
 	def compute_handler_system(
 			motor, turns, radius, slot_depth, length, slot_width, reluctance, frequency,
 			charge, P, S,
 			controller, n_series,
 			load,
+			thermal,
 	):
 		"""Put all modifiers to the system object here"""
 		# FIXME: place base object selection upstream?
@@ -396,6 +420,7 @@ def system_dash(
 		controller = pickle_decode(controller)
 		sysr = sysr.replace(
 			load=pickle_decode(load),
+			__thermal=pickle_decode(thermal)
 		).replace(
 			__geometry__turns=turns,
 			__geometry__radius_scale=radius,
@@ -413,32 +438,6 @@ def system_dash(
 			actuator__n_series=n_series,
 		)
 		return pickle_encode(sysr)
-
-	@callback(
-		Output('thermal', 'data'),
-
-		Input('statorade-slider', 'value'),
-		Input('vented-slider', 'value'),
-		Input('potted-slider', 'value'),
-		Input('emissivity-slider', 'value'),
-		Input('rim-exp-slider', 'value'),
-		Input('side-exp-slider', 'value'),
-
-	)
-	def compute_handler_thermal(
-			statorade, vented, potted, emissivity, rim_exp, side_exp,
-	):
-		thermal = system.actuator.thermal
-		thermal = thermal.replace(
-			conductivity__statorade=statorade,
-			conductivity__vented=vented,
-			conductivity__potted=potted,
-			conductivity__emissivity=emissivity,
-			conductivity__rim_exposure=rim_exp,
-			conductivity__side_exposure=side_exp,
-		)
-		return pickle_encode(thermal)
-
 
 	@callback(
 		Output('motor-props-label', 'children'),

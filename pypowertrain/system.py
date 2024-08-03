@@ -5,7 +5,6 @@ from pypowertrain.components.actuator import Actuator
 from pypowertrain.components.battery import Battery
 
 
-
 from dash import html, dcc, callback, Output, Input
 import dash_bootstrap_components as dbc
 
@@ -266,21 +265,21 @@ def system_plot(
 		for s in thermal_specs
 	}
 
-	x, X = system.x_axis(rpm_range)
-	y, Y = system.y_axis(torque_range)
+	x_label, x_range = system.x_axis(rpm_range)
+	y_label, y_range = system.y_axis(torque_range)
 
 	def imshow(im, **kwargs):
-		a = plt.pcolormesh(X, Y, im, mouseover=True, **kwargs)
+		a = plt.pcolormesh(x_range, y_range, im, mouseover=True, **kwargs)
 		plt.colorbar()
 		return a
 	def contour(im, **kwargs):
-		return plt.contour(X, Y, im, **kwargs)
+		return plt.contour(x_range, y_range, im, **kwargs)
 
 	def default_annotate():
 		# delineate FW-region
 		contour(Id, levels=[-1], colors='white')
 		# plot x axis
-		plt.plot(X, X * 0, c='gray')
+		plt.plot(x_range, x_range * 0, c='gray')
 		# plot thermal limits
 		for c, m in thermals.items():
 			contour(m, levels=[0], colors=c)
@@ -298,12 +297,12 @@ def system_plot(
 
 		if targets is not None:
 			t_torque, t_rpm, t_dissipation, t_weight = [np.array(t) for t in targets]
-			plt.scatter(system.x_axis(t_rpm)[1], system.y_axis(t_torque)[1])
+			plt.scatter(system.x_axis_forward(t_rpm), system.y_axis_forward(t_torque))
 
-		plt.xlabel(x)
-		plt.xticks(X[::len(X)//10])
-		plt.ylabel(y)
-		plt.yticks(Y[::len(Y)//10])
+		plt.xlabel(x_label)
+		plt.xticks(x_range[::len(x_range)//10])
+		plt.ylabel(y_label)
+		plt.yticks(y_range[::len(y_range)//10])
 
 	# plt.figure()
 	# imshow(efficiency, cmap='nipy_spectral', clim=(0, 1))
