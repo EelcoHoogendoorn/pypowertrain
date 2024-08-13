@@ -157,7 +157,14 @@ def system_limits(
 	Rt = actuator.phase_resistance
 
 
-	Vlim = lambda omega: (Id*Rt - omega*motor.electrical.Lq*Iq)**2 + (Iq*Rt + omega*motor.electrical.Ld*Id + omega*motor.flux)**2
+	Vq_bal = lambda omega: Iq * Rt + omega * motor.electrical.Ld * Id + omega * motor.flux
+	Vd_bal = lambda omega: Id * Rt - omega * motor.electrical.Lq * Iq
+	Vlim2 = lambda omega: Vq_bal(omega) ** 2 + Vd_bal(omega) ** 2
+
+	# these are rewritings of the above; solving for a fixed Iq
+	Id_bal = lambda omega: omega * motor.electrical.Lq * Iq / Rt
+	Vq_bal_2 = lambda omega: Iq * Rt + omega * motor.electrical.Ld * Id_bal(omega) + omega * motor.flux
+
 	def process_omega(omega_axle_hz):
 		"""construct and intersect amp and V limits for a given omega"""
 		omega_elec_hz = omega_axle_hz * motor.geometry.pole_pairs
@@ -179,7 +186,7 @@ def system_limits(
 		effective_voltage = actuator.effective_voltage(effective_bus_voltage)
 
 		mask = np.abs(omega_elec_hz) < controller.freq_limit
-		mask = np.logical_and(mask, Vlim(omega_elec_rad) < effective_voltage ** 2)
+		mask = np.logical_and(mask, Vlim2(omega_elec_rad) < effective_voltage ** 2)
 		mask = np.logical_and(mask, Is < actuator.phase_current_limit**2)
 		# cap bus power
 		mask = np.logical_and(mask, bus_power < battery.peak_discharge_power)
@@ -201,11 +208,13 @@ def system_limits(
 
 		return [
 			np.ma.array(o[i, idx], mask=mask).filled(np.nan)
-			for o in [copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, mechanical_torque]
+			for o in [copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, Vq_bal_2(omega_elec_rad), mechanical_torque]
 		]
 	# good old for loop rather than vectorize over rpm; memory use might explode otherwise
 	outputs = np.array([process_omega(o) for o in rpm/60])
 	return np.moveaxis(outputs, [1, 2, 0], [0, 1, 2])
+
+
 
 
 def round(x, digits):
@@ -220,7 +229,7 @@ def system_detect_limits(system, fw=1.3, frac=0.95, padding=1.1):
 	max_rpm = system.actuator.motor.electrical.Kv * system.battery.voltage * fw * system.actuator.n_series
 	trange = np.linspace(-max_torque, +max_torque, 20, endpoint=True)
 	rpm = np.linspace(0, max_rpm, 20, endpoint=False)
-	_, _, _, _, _, _, torque = system_limits(system, trange, rpm)
+	torque = system_limits(system, trange, rpm)[-1]
 	max_torque = np.max(np.abs(np.nan_to_num(torque)))
 	max_rpm = rpm[::-1][np.argmin(np.mean(np.isnan(torque), axis=0)[::-1] > frac)]
 	max_rpm = system.x_axis_inverse(round(system.x_axis_forward(max_rpm) * padding, 2))
@@ -247,7 +256,7 @@ def system_plot(
 	torque_range = np.linspace(-max_torque, +max_torque, n_torque + 1, endpoint=True)
 
 	# eval the system performance graphs
-	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = system_limits(system, torque_range, rpm_range)
+	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, vbal, torque = system_limits(system, torque_range, rpm_range)
 	dissipation = copper_loss + iron_loss
 	efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
 
@@ -295,6 +304,9 @@ def system_plot(
 
 		contour(efficiency, levels=[0.9], colors='green')
 
+		# open loop torque curve
+		contour(vbal, levels=[0], colors='brown')
+
 		if targets is not None:
 			t_torque, t_rpm, t_dissipation, t_weight = [np.array(t) for t in targets]
 			plt.scatter(system.x_axis_forward(t_rpm), system.y_axis_forward(t_torque))
@@ -315,12 +327,12 @@ def system_plot(
 	# plt.title('Id')
 	# default_annotate()
 	#
-	# # bus power levels
-	# plt.figure()
-	# blim = np.abs(np.nan_to_num(bus_power)).max()
-	# imshow(bus_power, cmap='bwr', clim=(-blim, blim))
-	# plt.title('Bus power')
-	# default_annotate()
+	# bus power levels
+	plt.figure()
+	blim = np.abs(np.nan_to_num(bus_power)).max()
+	imshow(bus_power, cmap='bwr', clim=(-blim, blim))
+	plt.title('Bus power')
+	default_annotate()
 	#
 	# # dissipation
 	# plt.figure()
@@ -328,12 +340,12 @@ def system_plot(
 	# plt.title('Dissipation')
 	# default_annotate()
 
-	# dissipation
-	plt.figure()
-	alim = np.abs(np.nan_to_num(acceleration)).max()
-	imshow(acceleration, cmap='bwr', clim=(-alim, alim))
-	plt.title('Acceleration')
-	default_annotate()
+	# # dissipation
+	# plt.figure()
+	# alim = np.abs(np.nan_to_num(acceleration)).max()
+	# imshow(acceleration, cmap='bwr', clim=(-alim, alim))
+	# plt.title('Acceleration')
+	# default_annotate()
 
 	plt.show()
 

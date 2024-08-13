@@ -118,9 +118,9 @@ class Electrical(Scaled, Base):
 
 		nondim_attrs = {}
 		if d0 is None:
-			# NOTE: these nondim defaults are taken from grin data
-			nondim_attrs['d_0'] = 348
-			nondim_attrs['d_1'] = 0.5
+			# NOTE: these nondim defaults are taken to coincide with grin data
+			nondim_attrs['d_0'] = 454
+			nondim_attrs['d_1'] = 0.66
 		else:
 			attrs['d_0'] = d0
 			attrs['d_1'] = d1 * 60	# to rotor hz

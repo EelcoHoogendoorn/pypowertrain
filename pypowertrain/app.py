@@ -35,7 +35,7 @@ def calc_stuff(system, x_range, y_range, thermal_specs):
 	rpm_range = system.x_axis_inverse(x_range)
 	torque_range = system.y_axis_inverse(y_range)
 	graphs = system_limits(system, torque_range, rpm_range).astype(np.float32)
-	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = graphs
+	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, vbal, torque = graphs
 
 	dissipation = copper_loss + iron_loss
 	# efficiency = 1 - dissipation / np.abs(bus_power)
@@ -61,7 +61,11 @@ def calc_stuff(system, x_range, y_range, thermal_specs):
 
 	efficiency_contour = get_cont(efficiency - 0.9)
 
-	contours = thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour
+	vbal_contour = get_cont(vbal)
+
+	contours = thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour, vbal_contour
+	graphs = copper_loss, iron_loss, bus_power, mechanical_power, torque
+
 	return graphs, contours
 
 
@@ -106,7 +110,12 @@ def system_dash(
 
 	"""
 
-	plots = ['dissipation', 'power', 'efficiency', 'Id', 'acceleration']
+	plots = [
+		'Dissipation',
+		'Bus power',
+		'Efficiency',
+		'Acceleration'
+	]
 
 	turns_tooltip = "This changes the number of turns, at equal total copper volume in the coils. As such it does not impact the motor mass. There is no right or wrong here; but it is important to tune it properly to the intended application. This scaling law is exact; although it ignores enamel thickness, eddy-losses, and winding-practicalities."
 	radius_tooltip = 'Radial scaling has a quadratic effect on both motor mass and torque. Dialing in this value to one appropriate for your design constraints is often one of the more important ones. Note that radial scaling is exact in terms of the electrical parameters. The mass predictions of the frameless parts of the motor are exact, but the main uncertainty here is in the mass of the structural parts; depending on the scale different construction technicues might be appropriate'
@@ -142,6 +151,7 @@ def system_dash(
 		'Field weakening',
 		'Efficiency',
 		'Acceleration',
+		'Open loop'
 	]
 	plot_types = ['Geometry', 'Graph']
 
@@ -205,10 +215,9 @@ def system_dash(
 		dcc.Slider(1, 20, 1, value=system.battery.S, id='S-slider'),
 		# html.Div(id='battery-weight-label'),
 		html.Div(id='battery-props-label', style={'whiteSpace': 'pre-wrap'}),
-
 	])
 	# FIXME: this is specific to the shelled thermal model
-	#  which not all motors use. prob best to make app code more modular; so there can be broad motor-controller comparison functionality,
+	#  prob best to make app code more modular; so there can be broad motor-controller comparison functionality,
 	#  as well as a different app for tuning a specific motor?
 	thermal_tab = dbc.Tab(label='Thermal', children=[
 		html.Label('Statorade'),
@@ -230,21 +239,23 @@ def system_dash(
 		dcc.Dropdown(list(controllers.keys()), '', id='dropdown-controller'),
 		dcc.Checklist(options=fw_options, value=fw_options, id='field-weakening'),
 		html.Label('Number of controllers'),
-		dcc.Slider(1, 5, 1, value=system.actuator.n_series, id='n_series-slider'),
-		dbc.Label('Voltage'),
-		dbc.Input(value=system.actuator.controller.modulation_factor, type='number', id='c-voltage-input', min=0, max=200, step=1),
-		dbc.Label('Power'),
-		dbc.Input(value=system.actuator.controller.modulation_factor, type='number', id='c-power-input', min=0, max=20000, step=500),
-		dbc.Label('Modulation'),
-		dbc.Input(value=system.actuator.controller.modulation_factor, type='number', id='c-modulation-input', min=0.5, max=1, step=0.01),
+		dcc.Slider(1, 4, 1, value=system.actuator.n_series, id='n_series-slider'),
+		dbc.Label('Bus voltage limit'),
+		dbc.Input(value=system.actuator.controller.bus_voltage_limit, type='number', id='c-voltage-input', min=0, max=200, step=1),
+		dbc.Label('Phase current limit'),
+		dbc.Input(value=system.actuator.controller.phase_current_limit, type='number', id='c-amp-input', min=0, max=400, step=10),
+		dbc.Label('Power limit'),
+		dbc.Input(value=system.actuator.controller.power_limit, type='number', id='c-power-input', min=0, max=20000, step=500),
 		dbc.Label('Frequency limit'),
 		dbc.Input(value=system.actuator.controller.freq_limit, type='number', id='c-freq-input', min=100, max=10000, step=100),
+		dbc.Label('Modulation'),
+		dbc.Input(value=system.actuator.controller.modulation_factor, type='number', id='c-modulation-input', min=0.5, max=1, step=0.01),
 	])
 	visual_tab = dbc.Tab(label='Visual', children=[
 		html.Label('Plot types'),
 		dcc.Checklist(options=plot_types, value=plot_types, id='plot-type-list'),
 		html.Label('Plot image'),
-		dcc.Dropdown(plots, 'acceleration', id='dropdown-selection'),
+		dcc.Dropdown(plots, 'Acceleration', id='dropdown-selection'),
 		html.Label('Plot overlays'),
 		dcc.Checklist(options=overlays, value=overlays, id='check-overlay', labelStyle={'display': 'block'},),
 		html.Label('Automatic plot bound rescaling'),
@@ -341,6 +352,7 @@ def system_dash(
 		Output('controller_og', 'data'),
 		Output('field-weakening', 'value'),
 		Output('c-voltage-input', 'value'),
+		Output('c-amp-input', 'value'),
 		Output('c-power-input', 'value'),
 		Output('c-modulation-input', 'value'),
 		Output('c-freq-input', 'value'),
@@ -354,6 +366,7 @@ def system_dash(
 		ui = (
 			fw_options * controller.field_weakening,
 			controller.bus_voltage_limit,
+			controller.phase_current_limit,
 			controller.power_limit,
 			controller.modulation_factor,
 			controller.freq_limit,)
@@ -365,20 +378,22 @@ def system_dash(
 		Input('controller_og', 'data'),
 		Input('field-weakening', 'value'),
 		Input('c-voltage-input', 'value'),
+		Input('c-amp-input', 'value'),
 		Input('c-power-input', 'value'),
 		Input('c-modulation-input', 'value'),
 		Input('c-freq-input', 'value'),
 	)
 	def compute_handler_controller_adjust(
-			controller, field_weakening, c_voltage, c_power, c_modulation, c_freq
+			controller, field_weakening, voltage, amps, power, modulation, freq
 	):
 		controller = pickle_decode(controller)
 		controller = controller.replace(
 			field_weakening=bool(field_weakening),
-			bus_voltage_limit=c_voltage,
-			power_limit=c_power,
-			modulation_factor=c_modulation,
-			freq_limit=c_freq,
+			bus_voltage_limit=voltage,
+			phase_current_limit=amps,
+			power_limit=power,
+			modulation_factor=modulation,
+			freq_limit=freq,
 		)
 		return pickle_encode(controller)
 
@@ -462,7 +477,6 @@ def system_dash(
 			f'Voltage:\t {system.battery.voltage:0.1f} \t V\n' \
 			f'Capacity:\t {system.battery.capacity:0.0f} \t wh\n'
 
-
 	@callback(
 		Output('table-limits', 'editable'),
 
@@ -504,7 +518,6 @@ def system_dash(
 		x_range = np.linspace(-max_x * ('x-axis' in axes), +max_x, n_x * resolution, endpoint=True)
 		y_range = np.linspace(-max_y * ('y-axis' in axes), +max_y, n_y * resolution, endpoint=True)
 		return jsonpickle.dumps((x_range, y_range))
-
 
 	@callback(
 		Output('debug', 'children'),
@@ -575,8 +588,8 @@ def system_dash(
 		x_range, y_range = jsonpickle.loads(ranges)
 		graphs, contours = jsonpickle.loads(data)
 
-		copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, torque = graphs
-		thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour = contours
+		copper_loss, iron_loss, bus_power, mechanical_power, torque = graphs
+		thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour, vbal_contour = contours
 
 		dissipation = copper_loss + iron_loss
 		efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
@@ -595,19 +608,16 @@ def system_dash(
 			)
 
 
-		if plot_key == 'efficiency':
+		if plot_key == 'Efficiency':
 			# FIXME: add custom color scale with high contrast at the high end
 			fig = px.imshow(wrap(efficiency, plot_key), origin='lower', zmin=0, zmax=1, color_continuous_scale='rainbow')
-		if plot_key == 'power':
+		if plot_key == 'Bus power':
 			zlim = np.abs(np.nan_to_num(bus_power)).max()
 			fig = px.imshow(wrap(bus_power, plot_key), origin='lower', zmin=-zlim, zmax=zlim, color_continuous_scale='RdBu_r')
-		if plot_key == 'dissipation':
+		if plot_key == 'Dissipation':
 			zlim = np.abs(np.nan_to_num(dissipation)).max()
 			fig = px.imshow(wrap(dissipation, plot_key), origin='lower', zmin=0, zmax=zlim, color_continuous_scale='Electric')
-		if plot_key == 'Id':
-			zlim = np.abs(np.nan_to_num(Id)).max()
-			fig = px.imshow(wrap(Id, plot_key), origin='lower', zmin=-zlim, zmax=zlim, color_continuous_scale='RdBu')
-		if plot_key == 'acceleration':
+		if plot_key == 'Acceleration':
 			zlim = np.abs(np.nan_to_num(acceleration)).max()
 			fig = px.imshow(wrap(acceleration, plot_key), origin='lower', zmin=-zlim, zmax=zlim, color_continuous_scale='RdBu')
 
@@ -626,6 +636,9 @@ def system_dash(
 			for a, contour in acceleration_contours.items():
 				# FIXME: debug string formatting
 				plot_contour(fig, contour, color='black', name=a)
+
+		if 'Open loop' in overlay_data:
+			plot_contour(fig, vbal_contour, color='purple', name='Open loop')
 
 		# add x axis
 		fig.add_trace(

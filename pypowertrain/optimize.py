@@ -15,7 +15,7 @@ def system_score(
 	torque_range = system.actuator.peak_torque * 1.1
 	trange = np.linspace(-torque_range, +torque_range, gridsize+1, endpoint=True)
 	outputs = system_limits(system, trange, t_rpm, gridsize=100)
-	copper, iron, bus_power, mechanical_power, Iq, Id, torque = outputs
+	copper, iron, bus_power, mechanical_power, Iq, Id, vlim, torque = outputs
 	dissipation = copper + iron
 
 	# sample closest realizable torque at given kph
