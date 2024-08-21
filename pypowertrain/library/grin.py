@@ -66,7 +66,7 @@ def phaserunner():
 		length=99e-3,
 		height=34e-3,
 		weight=0.26,
-		# modulation_factor=1/np.sqrt(3),
+		modulation_factor=0.9/np.sqrt(3),	# FIXME: unknown?
 	)
 
 

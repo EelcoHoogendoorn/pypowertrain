@@ -21,7 +21,7 @@ class Controller(Base):
 	ripple_freq: float
 	freq_limit: float	# e freq hz
 	# FIXME: add dropdown options? also include trapezoidal modulation, plus associated harmonic losses?
-	modulation_factor: float = 1 / np.sqrt(3) * 0.95
+	modulation_factor: float
 	field_weakening: bool = True
 
 	# some arbitrary defaults; often we dont care anyway
@@ -53,4 +53,5 @@ def define_ideal_controller():
 		internal_resistance=0,
 		ripple_freq=1e6,
 		freq_limit=1e6,
+		modulation_factor=1/np.sqrt(3),
 	)

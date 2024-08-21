@@ -15,6 +15,7 @@ def n1():
 		length=46e-3,
 		height=8e-3,
 		weight=14.6e-3,
+		modulation_factor=0.9 / np.sqrt(3),
 	)
 
 
@@ -31,6 +32,7 @@ def r4():
 		length=53e-3,
 		height=8e-3,
 		weight=14.2e-3,
+		modulation_factor=0.9 / np.sqrt(3),
 	)
 
 
@@ -47,6 +49,7 @@ def c1():
 		length=38e-3,
 		height=9e-3,
 		weight=8.9e-3,
+		modulation_factor=0.9 / np.sqrt(3),
 	)
 
 

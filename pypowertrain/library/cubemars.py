@@ -39,7 +39,6 @@ def R100():
 def RO100():
 	"""https://www.cubemars.com/goods-1159-RO100.html"""
 	geometry = Geometry.create(
-		inrunner=False,
 		pole_pairs=21,
 		slot_triplets=12,
 		turns=5, # matched from dimensionless attributes

@@ -13,6 +13,7 @@ def maytech_100a():
 		width=43e-3,
 		length=70e-3,
 		height=16e-3,
+		modulation_factor=0.95 / np.sqrt(3),
 	)
 
 
@@ -27,5 +28,6 @@ def triforce_a50s():
 		width=35.5e-3,
 		length=21e-3,
 		height=13.8e-3,
-		weight=11e-3
+		weight=11e-3,
+		modulation_factor=0.95 / np.sqrt(3),
 	)

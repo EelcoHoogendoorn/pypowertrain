@@ -1,3 +1,5 @@
+import numpy as np
+
 from pypowertrain.components.controller import *
 from pypowertrain.components.motor import *
 
@@ -13,6 +15,7 @@ def pro():
 		width=51e-3,
 		length=64e-3,
 		weight=35e-3,
+		modulation_factor=0.99 / np.sqrt(3),
 	)
 
 def pro_nominal():
@@ -31,6 +34,7 @@ def pro_overclock():
 
 
 def s1():
+	# FIXME: modulation factor 0.7 lower than the pro?
 	return Controller(
 		phase_current_limit=80,
 		power_limit=2000,		# no known data?
@@ -41,6 +45,7 @@ def s1():
 		width=50e-3,
 		length=66e-3,
 		weight=35e-3,
+		modulation_factor=0.7 / np.sqrt(3),
 	)
 
 
@@ -55,6 +60,7 @@ def micro():
 		width=35e-3,
 		length=35e-3,
 		weight=7.5e-3,
+		modulation_factor=0.99 / np.sqrt(3),
 	)
 
 
