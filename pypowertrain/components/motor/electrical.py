@@ -113,7 +113,7 @@ class Electrical(Scaled, Base):
 			'R_ew': R * rew,
 			'R_co': R * rco,
 			'Kt': Kt,
-			'salience': salience,
+			'salience_ratio': salience,
 		}
 
 		nondim_attrs = {}
@@ -144,10 +144,14 @@ class Electrical(Scaled, Base):
 		return self.L_ew + self.L_co
 	@property
 	def Lq(self):
-		return self.L + self.salience
+		return self.L / (1+self.salience_ratio)
 	@property
 	def Ld(self):
-		return self.L - self.salience
+		return self.L * (1+self.salience_ratio)
+	@property
+	def salience(self):
+		return self.Ld - self.Lq
+
 	def iron_drag(self, omega):
 		"""omega in mechanical hz"""
 		return self.d_0 + self.d_1 * np.abs(omega)

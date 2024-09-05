@@ -144,7 +144,7 @@ def system_limits(
 	#  alternatively; dont paramerize in terms of output torque? stick with EM torque?
 	rpm, trange = actuator.gearing.backward(rpm, trange)
 
-	salience = motor.electrical.salience # -(motor.Lq - motor.Ld)
+	salience = motor.electrical.salience
 	Id, em_torque = np.meshgrid(arange, trange)
 	Iq = em_torque / (3/2) / motor.geometry.pole_pairs / (motor.flux + Id * salience)
 	# FIXME: encode saturation relation; torque goes down with excessive (pm_flux - id)**2+iq**2
@@ -223,12 +223,12 @@ def round(x, digits):
 	return np.ceil(x / shift) * shift
 
 
-def system_detect_limits(system, fw=1.3, frac=0.95, padding=1.1):
+def system_detect_limits(system, fw=1.5, frac=0.98, padding=1.1):
 	"""auto-detect some reasonably tight limits on the actuator system"""
-	max_torque = system.actuator.peak_torque * 1.1
+	max_torque = system.actuator.peak_torque * 2.0
 	max_rpm = system.actuator.motor.electrical.Kv * system.battery.voltage * fw * system.actuator.n_series
-	trange = np.linspace(-max_torque, +max_torque, 20, endpoint=True)
-	rpm = np.linspace(0, max_rpm, 20, endpoint=False)
+	trange = np.linspace(-max_torque, +max_torque, 30, endpoint=True)
+	rpm = np.linspace(0, max_rpm, 30, endpoint=False)
 	torque = system_limits(system, trange, rpm)[-1]
 	max_torque = np.max(np.abs(np.nan_to_num(torque)))
 	max_rpm = rpm[::-1][np.argmin(np.mean(np.isnan(torque), axis=0)[::-1] > frac)]
@@ -244,6 +244,10 @@ def system_plot(
 	max_rpm=None,
 	max_torque=None,
 	targets=None,
+	color='power',
+	annotations='tdaeo',
+	rpm_negative=False,
+	torque_negative=True,
 ):
 	"""mpl plots of system limits and properties"""
 	import matplotlib.pyplot as plt
@@ -252,8 +256,8 @@ def system_plot(
 	if max_torque is None:
 		max_rpm, max_torque = system_detect_limits(system)
 
-	rpm_range = np.linspace(0, max_rpm, n_rpm+1, endpoint=True)
-	torque_range = np.linspace(-max_torque, +max_torque, n_torque + 1, endpoint=True)
+	rpm_range = np.linspace(-max_rpm*rpm_negative, max_rpm, n_rpm+1, endpoint=True)
+	torque_range = np.linspace(-max_torque*torque_negative, +max_torque, n_torque + 1, endpoint=True)
 
 	# eval the system performance graphs
 	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, vbal, torque = system_limits(system, torque_range, rpm_range)
@@ -285,68 +289,61 @@ def system_plot(
 		return plt.contour(x_range, y_range, im, **kwargs)
 
 	def default_annotate():
-		# delineate FW-region
-		contour(Id, levels=[-1], colors='white')
-		# plot x axis
-		plt.plot(x_range, x_range * 0, c='gray')
-		# plot thermal limits
-		for c, m in thermals.items():
-			contour(m, levels=[0], colors=c)
-
-		# plot acceleration load lines
-		amin, amax = np.nan_to_num(acceleration).min(), np.nan_to_num(acceleration).max()
-		aname, lines = system.acceleration_lines()
-		for a in lines:
-			if np.all(a > amin+1e-3) and np.all(a < amax-1e-3):
-				contour(acceleration, levels=[a], colors='black')
-		contour(acceleration, levels=[amin + 5e-4], colors='gray')
-		contour(acceleration, levels=[amax - 5e-4], colors='gray')
-
-		contour(efficiency, levels=[0.9], colors='green')
-
-		# open loop torque curve
-		contour(vbal, levels=[0], colors='brown')
+		if 'd' in annotations:
+			# delineate FW-region
+			contour(Id, levels=[-1], colors='white')
+		if 't' in annotations:
+			# plot thermal limits
+			for c, m in thermals.items():
+				contour(m, levels=[0], colors=c)
+		if 'a' in annotations:
+			# # plot acceleration load lines
+			amin, amax = np.nan_to_num(acceleration).min(), np.nan_to_num(acceleration).max()
+			aname, lines = system.acceleration_lines()
+			for a in lines:
+				if np.all(a > amin+1e-3) and np.all(a < amax-1e-3):
+					contour(acceleration, levels=[a], colors='black')
+			contour(acceleration, levels=[amin + 5e-4], colors='gray')
+			contour(acceleration, levels=[amax - 5e-4], colors='gray')
+		if 'e' in annotations:
+			contour(efficiency, levels=[0.9], colors='green')
+		if 'o' in annotations:
+			# open loop torque curve
+			contour(vbal, levels=[0], colors='brown')
 
 		if targets is not None:
 			t_torque, t_rpm, t_dissipation, t_weight = [np.array(t) for t in targets]
 			plt.scatter(system.x_axis_forward(t_rpm), system.y_axis_forward(t_torque))
+
+		# plot x axis
+		plt.plot(x_range, x_range * 0, c='gray')
 
 		plt.xlabel(x_label)
 		plt.xticks(x_range[::len(x_range)//10])
 		plt.ylabel(y_label)
 		plt.yticks(y_range[::len(y_range)//10])
 
-	# plt.figure()
-	# imshow(efficiency, cmap='nipy_spectral', clim=(0, 1))
-	# plt.title('Efficiency')
-	# default_annotate()
-	#
-	# plt.figure()
-	# current_range = np.abs(np.nan_to_num(Id)).max()
-	# imshow(Id, cmap='bwr', clim=(-current_range, current_range))
-	# plt.title('Id')
-	# default_annotate()
-	#
-	# bus power levels
 	plt.figure()
-	blim = np.abs(np.nan_to_num(bus_power)).max()
-	imshow(bus_power, cmap='bwr', clim=(-blim, blim))
-	plt.title('Bus power')
+	if color == 'efficiency':
+		imshow(efficiency, cmap='nipy_spectral', clim=(0, 1))
+		plt.title('Efficiency')
+	if color == 'Id':
+		current_range = np.abs(np.nan_to_num(Id)).max()
+		imshow(Id, cmap='bwr', clim=(-current_range, current_range))
+		plt.title('Id')
+	if color == 'power':
+		blim = np.abs(np.nan_to_num(bus_power)).max()
+		imshow(bus_power, cmap='bwr', clim=(-blim, blim))
+		plt.title('Bus power')
+	if color == 'dissipation':
+		imshow(dissipation, cmap='cool', clim=(0, np.nan_to_num(dissipation, nan=0).max()))
+		plt.title('Dissipation')
+	if color == 'acceleration':
+		alim = np.abs(np.nan_to_num(acceleration)).max()
+		imshow(acceleration, cmap='bwr', clim=(-alim, alim))
+		plt.title('Acceleration')
+
 	default_annotate()
-	#
-	# # dissipation
-	# plt.figure()
-	# imshow(dissipation, cmap='cool', clim=(0, np.nan_to_num(dissipation, nan=0).max()))
-	# plt.title('Dissipation')
-	# default_annotate()
-
-	# # dissipation
-	# plt.figure()
-	# alim = np.abs(np.nan_to_num(acceleration)).max()
-	# imshow(acceleration, cmap='bwr', clim=(-alim, alim))
-	# plt.title('Acceleration')
-	# default_annotate()
-
 	plt.show()
 
 
