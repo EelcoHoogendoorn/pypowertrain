@@ -46,6 +46,7 @@ class Motor(Base):
 		return self.H_limit * 1000 * self.electrical.geometry.magnet_height / self.electrical.geometry.turns
 
 	def iron_drag(self, omega):
+		"""Iron drag in Nm for a given omega in mechanical Hz"""
 		# FIXME: add in iron temperature effects? losses go down by some 5% at temp
 		# https://eprints.whiterose.ac.uk/146185/1/2018-11-06-TIA-Model%20Comparison-Revised-v3-Final.pdf
 		return self.electrical.iron_drag(omega)

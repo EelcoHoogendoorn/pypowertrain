@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 
 from pypowertrain.utils import *
@@ -134,7 +135,8 @@ def system_limits(
 	controller = actuator.controller
 
 	if controller.field_weakening:
-		arange = np.linspace(-actuator.phase_current_limit, +actuator.phase_current_limit, gridsize+1)
+		# FIXME: are we at all interested in positive Id? prob not, saturation limits sensible Id
+		arange = np.linspace(-actuator.phase_current_limit, +actuator.phase_current_limit*0.0, gridsize+1)
 	else:
 		arange = np.array([0.])	# always pursue Id=0
 
@@ -147,16 +149,20 @@ def system_limits(
 	salience = motor.electrical.salience
 	Id, em_torque = np.meshgrid(arange, trange)
 	Iq = em_torque / (3/2) / motor.geometry.pole_pairs / (motor.flux + Id * salience)
-	# FIXME: encode saturation relation; torque goes down with excessive (pm_flux - id)**2+iq**2
-	#  that is, we might use FW at high torque to combat saturation
+
+	# apply inverse saturation curve to Iq
+	Iq = Iq * motor.electrical.saturation_factor(Iq)
 
 	# should ripple count towards phase current limits? i guess so conservatively.
-	Is = Id**2 + Iq**2 + actuator.ripple_current**2
+	# voltage_effective = np.min(battery.voltage, controller.bus_voltage_limit) * actuator.n_series  # FIXME: conservative; pass in from battery?
+	Lm = np.sqrt(motor.electrical.Lq * motor.electrical.Ld) # geo mean of inductances
+
+	Is = Id**2 + Iq**2 #+ actuator.ripple_current**2
 
 	bus_resistance = actuator.bus.resistance + battery.resistance
 	Rt = actuator.phase_resistance
 
-
+	# formulate voltage relations of the motor to solve for states within voltage limits
 	Vq_bal = lambda omega: Iq * Rt + omega * motor.electrical.Ld * Id + omega * motor.flux
 	Vd_bal = lambda omega: Id * Rt - omega * motor.electrical.Lq * Iq
 	Vlim2 = lambda omega: Vq_bal(omega) ** 2 + Vd_bal(omega) ** 2
@@ -165,6 +171,15 @@ def system_limits(
 	Id_bal = lambda omega: omega * motor.electrical.Lq * Iq / Rt
 	Vq_bal_2 = lambda omega: Iq * Rt + omega * motor.electrical.Ld * Id_bal(omega) + omega * motor.flux
 
+	smask = 1
+
+	demag_mask = motor.electrical.demagnetiztion_factor(Iq, Id)
+	smask = np.logical_and(smask, demag_mask < 1)
+	# FIXME: crop grid to valid states for efficiency reasons?
+	# plt.figure()
+	# plt.imshow(smask)
+	# plt.show()
+
 	def process_omega(omega_axle_hz):
 		"""construct and intersect amp and V limits for a given omega"""
 		omega_elec_hz = omega_axle_hz * motor.geometry.pole_pairs
@@ -172,7 +187,7 @@ def system_limits(
 		omega_elec_rad = omega_elec_hz * 2 * np.pi
 
 		# FIXME: work Id-FW-dependence into iron drag? Id division should be about equal to demag current limit
-		#  effect seems quite minimal in practice; like 3% kph continuous rating
+		#  effect seems quite minimal in practice; like 3% kph continuous rating. not nothing tho
 		drag_torque = np.sign(omega_axle_hz) * motor.iron_drag(omega_axle_hz) #* (1+Id/300)**2
 		copper_loss = Is*Rt
 		iron_loss = omega_axle_rad * drag_torque + omega_elec_rad**2*Is*0
@@ -181,12 +196,32 @@ def system_limits(
 		mechanical_power = mechanical_torque * omega_axle_rad
 		bus_power = dissipation + mechanical_power
 
-		bus_current = bus_power / battery.voltage	# FIXME: solve bus voltage sag properly; get wonky results right now for high resistsances
+		bus_current = bus_power / battery.voltage	# FIXME: solve bus voltage sag properly; get wonky results right now for high bus resistances
 		effective_bus_voltage = battery.voltage - bus_current * bus_resistance
-		effective_voltage = actuator.effective_voltage(effective_bus_voltage)
+		# fold in modulation depth and n-series
+		# how much DC we really feel at the bus after clipping and series
+		voltage_effective = np.minimum(battery.voltage, controller.bus_voltage_limit) * actuator.n_series  # FIXME: conservative; pass in from battery?
+		ripple_factor = voltage_effective / (controller.ripple_freq * Lm)
+		# effective_voltage = actuator.effective_voltage(effective_bus_voltage)
 
-		mask = np.abs(omega_elec_hz) < controller.freq_limit
-		mask = np.logical_and(mask, Vlim2(omega_elec_rad) < effective_voltage ** 2)
+		# how much of a voltage vector wed want versus how much DC voltage we have
+		v_ratio = np.sqrt(Vlim2(omega_elec_rad)) / voltage_effective
+		D = v_ratio
+		# peak-to-peak delta
+		# https://www.portescap.com/en/newsroom/whitepapers/2021/10/understanding-the-effect-of-pwm-when-controlling-a-brushless-dc-motor
+		# FIXME: this is for a switching pattern with zero state (3-level)
+		ripple_delta = D * (1 - D) * ripple_factor  # peak to peak variation
+		ripple_loss = ripple_delta**2 / 12 * Rt	# to rms equivalent requires factor 12
+
+		# FIXME: solve this dependency better? bus power should feed back into the above; but lets assume ripple too small to impact bus behavior for now
+		copper_loss += ripple_loss
+		dissipation += ripple_loss
+		bus_power += ripple_loss
+
+		# v_margin = np.sqrt(Vlim2(omega_elec_rad)) - effective_voltage
+		mask = np.logical_and(smask, np.abs(omega_elec_hz) < controller.freq_limit)
+		mask = np.logical_and(mask, v_ratio < controller.modulation_factor)
+		# mask = np.logical_and(mask, v_margin < 0)
 		mask = np.logical_and(mask, Is < actuator.phase_current_limit**2)
 		# cap bus power
 		mask = np.logical_and(mask, bus_power < battery.peak_discharge_power)
@@ -195,6 +230,7 @@ def system_limits(
 		# yet we are missing something here no? caps will dissipate
 		# when switching large current zero bus regen braking
 		mask = np.logical_and(mask, np.abs(bus_power) < actuator.power_limit)
+
 
 		# of all valid Id options for a given em_torque, we pick the one most favorable to battery
 		ma = np.ma.array(bus_power, mask=1-mask)
@@ -208,7 +244,10 @@ def system_limits(
 
 		return [
 			np.ma.array(o[i, idx], mask=mask).filled(np.nan)
-			for o in [copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, Vq_bal_2(omega_elec_rad), mechanical_torque]
+			for o in [copper_loss, ripple_loss, iron_loss, bus_power, mechanical_power, Iq, Id, Vq_bal_2(omega_elec_rad), mechanical_torque]
+		] + [
+			# these two measure distance to cone and distance from Iq=0
+			v_ratio[i, idx], v_ratio[i, np.argmin(np.abs(arange))]-controller.modulation_factor
 		]
 	# good old for loop rather than vectorize over rpm; memory use might explode otherwise
 	outputs = np.array([process_omega(o) for o in rpm/60])
@@ -223,13 +262,14 @@ def round(x, digits):
 	return np.ceil(x / shift) * shift
 
 
-def system_detect_limits(system, fw=1.5, frac=0.98, padding=1.1):
+def system_detect_limits(system, fw=1.5, frac=0.98, padding=1.2):
 	"""auto-detect some reasonably tight limits on the actuator system"""
-	max_torque = system.actuator.peak_torque * 2.0
+	max_torque = system.actuator.peak_torque * 1.2
 	max_rpm = system.actuator.motor.electrical.Kv * system.battery.voltage * fw * system.actuator.n_series
-	trange = np.linspace(-max_torque, +max_torque, 30, endpoint=True)
-	rpm = np.linspace(0, max_rpm, 30, endpoint=False)
-	torque = system_limits(system, trange, rpm)[-1]
+	trange = np.linspace(-max_torque, +max_torque, 64, endpoint=True)
+	rpm = np.linspace(0, max_rpm, 64, endpoint=False)
+	results = system_limits(system, trange, rpm)
+	torque = results[-3]
 	max_torque = np.max(np.abs(np.nan_to_num(torque)))
 	max_rpm = rpm[::-1][np.argmin(np.mean(np.isnan(torque), axis=0)[::-1] > frac)]
 	max_rpm = system.x_axis_inverse(round(system.x_axis_forward(max_rpm) * padding, 2))
@@ -245,22 +285,25 @@ def system_plot(
 	max_torque=None,
 	targets=None,
 	color='power',
-	annotations='tdaeo',
+	annotations='tdeos',
 	rpm_negative=False,
 	torque_negative=True,
 ):
 	"""mpl plots of system limits and properties"""
 	import matplotlib.pyplot as plt
+	from matplotlib.lines import Line2D
 
 	# setup calculation grids
-	if max_torque is None:
-		max_rpm, max_torque = system_detect_limits(system)
+	if max_torque is None or max_rpm is None:
+		_max_rpm, _max_torque = system_detect_limits(system)
+		max_rpm = max_rpm or _max_rpm
+		max_torque = max_torque or _max_torque
 
 	rpm_range = np.linspace(-max_rpm*rpm_negative, max_rpm, n_rpm+1, endpoint=True)
 	torque_range = np.linspace(-max_torque*torque_negative, +max_torque, n_torque + 1, endpoint=True)
 
 	# eval the system performance graphs
-	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, vbal, torque = system_limits(system, torque_range, rpm_range)
+	copper_loss, ripple_loss, iron_loss, bus_power, mechanical_power, Iq, Id, vbal, torque, v_margin, v_margin2 = system_limits(system, torque_range, rpm_range)
 	dissipation = copper_loss + iron_loss
 	efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
 
@@ -273,7 +316,7 @@ def system_plot(
 		{'color': 'red', 'dt': 2, 'dT': 40},
 	]
 	thermals = {
-		s['color']: system.temperatures(
+		(s['color'], s['dt']): system.temperatures(
 			rpm_range, copper_loss, iron_loss, dt=s['dt']) - s['dT']
 		for s in thermal_specs
 	}
@@ -285,39 +328,61 @@ def system_plot(
 		a = plt.pcolormesh(x_range, y_range, im, mouseover=True, **kwargs)
 		plt.colorbar()
 		return a
+
 	def contour(im, **kwargs):
 		return plt.contour(x_range, y_range, im, **kwargs)
+
+	label_handles = []
+	def add_label(label, color):
+		line = Line2D([0], [0], label=label, color=color)
+		label_handles.append(line)
 
 	def default_annotate():
 		if 'd' in annotations:
 			# delineate FW-region
-			contour(Id, levels=[-1], colors='white')
+			contour(Id, levels=[-0.5], colors='white')
+			add_label(color='white', label='Field weakening')
 		if 't' in annotations:
 			# plot thermal limits
-			for c, m in thermals.items():
+			for (c, dt), m in thermals.items():
 				contour(m, levels=[0], colors=c)
+				add_label(color=c, label=f'Thermal {dt}s')
 		if 'a' in annotations:
 			# # plot acceleration load lines
 			amin, amax = np.nan_to_num(acceleration).min(), np.nan_to_num(acceleration).max()
 			aname, lines = system.acceleration_lines()
 			for a in lines:
 				if np.all(a > amin+1e-3) and np.all(a < amax-1e-3):
-					contour(acceleration, levels=[a], colors='black')
-			contour(acceleration, levels=[amin + 5e-4], colors='gray')
-			contour(acceleration, levels=[amax - 5e-4], colors='gray')
+					contour(acceleration, levels=[a], colors='black', linewidths=1.5)
+			contour(acceleration, levels=[amin + 5e-4], colors='black', linewidths=2)
+			contour(acceleration, levels=[amax - 5e-4], colors='black', linewidths=2)
+			add_label(color='black', label='Acceleration')
 		if 'e' in annotations:
 			contour(efficiency, levels=[0.9], colors='green')
+			add_label(color='green', label='90% Effciciency')
 		if 'o' in annotations:
 			# open loop torque curve
 			contour(vbal, levels=[0], colors='brown')
+			add_label(color='brown', label='Open Loop')
+		if 's' in annotations:
+			# saturation limit
+			p = np.abs(Iq) - system.actuator.motor.electrical.saturation
+			contour(p, levels=[0], colors='gray')
+			add_label(color='gray', label='Saturation')
+
 
 		if targets is not None:
 			t_torque, t_rpm, t_dissipation, t_weight = [np.array(t) for t in targets]
 			plt.scatter(system.x_axis_forward(t_rpm), system.y_axis_forward(t_torque))
 
-		# plot x axis
-		plt.plot(x_range, x_range * 0, c='gray')
+		if torque_negative:
+			# plot x axis
+			plt.plot(x_range, x_range * 0, c='black',linewidth=0.5)
+		if rpm_negative:
+			# plot y axis
+			plt.plot(y_range*0, y_range, c='black',linewidth=0.5)
 
+		plt.legend(handles=label_handles, loc='upper right')
 		plt.xlabel(x_label)
 		plt.xticks(x_range[::len(x_range)//10])
 		plt.ylabel(y_label)
@@ -331,6 +396,14 @@ def system_plot(
 		current_range = np.abs(np.nan_to_num(Id)).max()
 		imshow(Id, cmap='bwr', clim=(-current_range, current_range))
 		plt.title('Id')
+	if color == 'Iq':
+		current_range = np.abs(np.nan_to_num(Iq)).max()
+		imshow(Iq, cmap='bwr', clim=(-current_range, current_range))
+		plt.title('Iq')
+	# if color == 'I':
+	# 	current_range = np.abs(np.nan_to_num(Iq)).max()
+	# 	imshow(Iq, cmap='bwr', clim=(-current_range, current_range))
+	# 	plt.title('Iq')
 	if color == 'power':
 		blim = np.abs(np.nan_to_num(bus_power)).max()
 		imshow(bus_power, cmap='bwr', clim=(-blim, blim))

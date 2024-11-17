@@ -12,9 +12,10 @@ def test_moteus_n1():
 		actuator=Actuator(
 			motor=moteus.mj5208(),
 			controller=moteus.n1().replace(
-				field_weakening=True
+				field_weakening=True,
 			),
 		),
-		battery=define_battery_58v(P=100),
-	).replace(actuator__bus__length=0)
-	system_plot(system)
+		battery=define_battery_58v(P=10),
+	)
+	system_plot(system, annotations='tdeos')
+	# system.actuator.plot()

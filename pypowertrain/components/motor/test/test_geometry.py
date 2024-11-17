@@ -24,13 +24,13 @@ def test_geometry():
 	print(geo.em_flux_scale*(150/1.0))
 	# at 150A/nm, we are still under 1/3 of pm flux
 	# pythagoras summing q and d fluxes total is only 5% more, at 150nm
-	print(geo.iron_field_scale * 1.39) # *1.39 for typical closed loop neo strength; indeed around 2T
+	print(geo.iron_pm_field_scale * 1.39) # *1.39 for typical closed loop neo strength; indeed around 2T
 	# geo = geo.rescale(frequency_scale=2)
 
 
 def test_L():
 	"""copy parameters from paper; check that we get Lew=0.01"""
-	geo = Geometry(
+	geo = Geometry.create(
 		poles=4,
 		slots=12,
 		turns=19,
@@ -47,7 +47,7 @@ def test_L():
 	print()
 
 	geo = geo.replace(
-		gap_radius=636e-3/2,
+		gap_radius=636e-3 / 2,
 		gap_length=168e-3,
 		turns=17
 	)
@@ -64,7 +64,7 @@ def test_winding():
 	def score(p, s):
 		_, _, wf, b = winding(p, s)
 		b = b * 1.0
-		if p >= s * 1.9 or p<=s / 1.9: b = np.float_(0)
+		if p >= s * 1.9 or p<=s / 1.9: b = np.float64(0)
 		return wf * (b/b)
 	wf = [[score(p, s) for s in S] for p in P]
 	import matplotlib.pyplot as plt

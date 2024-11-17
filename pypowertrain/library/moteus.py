@@ -15,7 +15,7 @@ def n1():
 		length=46e-3,
 		height=8e-3,
 		weight=14.6e-3,
-		modulation_factor=0.9 / np.sqrt(3),
+		modulation_factor=0.9 / 2,	# curent moteus firmware uses sinusoidal commutation
 	)
 
 
@@ -32,7 +32,7 @@ def r4():
 		length=53e-3,
 		height=8e-3,
 		weight=14.2e-3,
-		modulation_factor=0.9 / np.sqrt(3),
+		modulation_factor=0.9 / 2,
 	)
 
 
@@ -49,7 +49,7 @@ def c1():
 		length=38e-3,
 		height=9e-3,
 		weight=8.9e-3,
-		modulation_factor=0.9 / np.sqrt(3),
+		modulation_factor=0.9 / 2,
 	)
 
 
@@ -71,10 +71,11 @@ def mj5208():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		Kv=330,
+		phase_to_phase_Kv=330,
 		phase_to_neutral_R=50e-3,
 		phase_to_neutral_L=30e-6,
-		# d0=0.03, d1=0.00003,	# FIXME: tune iron losses?
+		# d0=0.03, d1=0.00003,	# FIXME: tune iron losses? or are defaults fine?
+		saturation_nm=1.7,	# this is a practical saturation limit; a value somewhat beyond the linear region
 	)
 
 	# FIXME: make drone motor specific weight model?
@@ -82,6 +83,6 @@ def mj5208():
 
 	return Motor(
 		electrical=electrical,
-		thermal=basic_thermal(mass, K0=1),
+		thermal=basic_thermal(mass, K0=0.25),	# as measured by josh pieper at low rpm
 		mass=mass,
 	)

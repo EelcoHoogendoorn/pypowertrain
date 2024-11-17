@@ -4,7 +4,7 @@ from pypowertrain.components.motor.mass import Mass
 
 
 def fixture():
-	geo = Geometry(
+	geo = Geometry.create(
 		poles=46,
 		slots=42,
 		turns=5,

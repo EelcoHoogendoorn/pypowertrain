@@ -35,7 +35,7 @@ def calc_stuff(system, x_range, y_range, thermal_specs):
 	rpm_range = system.x_axis_inverse(x_range)
 	torque_range = system.y_axis_inverse(y_range)
 	graphs = system_limits(system, torque_range, rpm_range).astype(np.float32)
-	copper_loss, iron_loss, bus_power, mechanical_power, Iq, Id, vbal, torque = graphs
+	copper_loss, ripple_loss, iron_loss, bus_power, mechanical_power, Iq, Id, vbal, torque, v_margin, v_margin2 = graphs
 
 	dissipation = copper_loss + iron_loss
 	# efficiency = 1 - dissipation / np.abs(bus_power)
@@ -54,16 +54,20 @@ def calc_stuff(system, x_range, y_range, thermal_specs):
 	name, lines = system.acceleration_lines()
 	acceleration_contours = {name.format(float(ll)): get_cont(acceleration - ll) for ll in lines}
 
-	q = np.where(Id == 0, 1, np.nan_to_num(Id, nan=-1))
-	import skimage.filters
-	fw_lim = skimage.filters.gaussian(q, [3, 1]) + Id * 0
-	fw_lim_contour = get_cont(fw_lim + 3)
+	# q = np.where(Id == 0, 1, np.nan_to_num(Id, nan=-1))
+	# import skimage.filters
+	# fw_lim = skimage.filters.gaussian(q, [3, 1]) + Id * 0
+	# fw_lim_contour = get_cont(fw_lim + 3)
+	fw_lim_contour = get_cont(v_margin2)
 
 	efficiency_contour = get_cont(efficiency - 0.9)
 
 	vbal_contour = get_cont(vbal)
 
-	contours = thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour, vbal_contour
+	p = np.abs(Iq) - system.actuator.motor.electrical.saturation
+	saturation_contour = get_cont(p)
+
+	contours = thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour, vbal_contour, saturation_contour
 	graphs = copper_loss, iron_loss, bus_power, mechanical_power, torque
 
 	return graphs, contours
@@ -117,12 +121,12 @@ def system_dash(
 		'Acceleration'
 	]
 
-	turns_tooltip = "This changes the number of turns, at equal total copper volume in the coils. As such it does not impact the motor mass. There is no right or wrong here; but it is important to tune it properly to the intended application. This scaling law is exact; although it ignores enamel thickness, eddy-losses, and winding-practicalities."
+	turns_tooltip = "This changes the number of turns, at equal total copper volume in the coils. As such it does not impact the motor mass. There is no right or wrong here; but it is important to tune it properly to the intended application and controller constraints. This scaling law is exact; although it ignores enamel thickness, eddy-losses, and winding-practicalities."
 	radius_tooltip = 'Radial scaling has a quadratic effect on both motor mass and torque. Dialing in this value to one appropriate for your design constraints is often one of the more important ones. Note that radial scaling is exact in terms of the electrical parameters. The mass predictions of the frameless parts of the motor are exact, but the main uncertainty here is in the mass of the structural parts; depending on the scale different construction technicues might be appropriate'
 	slot_depth_tooltip = 'The slot depth has a direct influence on the amount of copper available, and tends to scale the thermal curves along the y-axis. It also has a profound effect on motor weight, since most of the mass in in the teeth and their copper. Very few caveats apply to this scaling law and extrapolations should be valid over a wide range of scalings'
 	axial_tooltip = 'Scaling of the axial length of the motor. Too low values will results in excessive negative end-effects, such as coil overhang. Longer values tend to have more restrictive thermal performance, per kg of motor'
-	reluctance_tooltip = 'Scaling of the amount of mu-0 in the motor magnetic circuit, at equal flux-density, and equal iron saturation. This is a fairly safe rescaling, although it ignores flux leakage and fringing effects. It will impact inductance and demagnetization limits.'
-	slot_width_tooltip = 'Scaling of the slot width. This trades copper current area for iron flux area. Narrower slots will raise resistance, and lower iron losses. Increasing slot width is generally not recommended, since motors tend to be designed near their iron saturation limits. A slight decrease might make sense though, if the resistance-headroom exists. Iron saturation is not currently modelled but more iron should raise the iron saturation limit too.'
+	reluctance_tooltip = 'Scaling of the amount of mu-0 in the motor magnetic circuit, at equal flux-density, and equal iron saturation. This is a fairly safe rescaling, although it ignores flux leakage and fringing effects. It will impact inductance, saturation and demagnetization limits.'
+	slot_width_tooltip = 'Scaling of the slot width. This trades copper current area for iron flux area. Narrower slots will raise resistance, and lower iron losses. Increasing slot width is generally not recommended, since motors tend to be designed near their iron saturation limits. A slight decrease might make sense though, if the resistance-headroom exists. Wider teeth will benefit iron saturation limits too.'
 	frequency_tooltip = "Scaling of the number of poles and slots, at equal gap radius. Note that these fractional scalings are generally not realizable; but adjusting this value should give quite an accurate idea, if your application would benefit from a motor with a different pole count."
 	# flux_tooltip = 'Flux scaling, at equal field density. This increases magnet volume and tooth width, at equal iron field level'
 
@@ -151,7 +155,8 @@ def system_dash(
 		'Field weakening',
 		'Efficiency',
 		'Acceleration',
-		'Open loop'
+		'Open loop',
+		'Saturation'
 	]
 	plot_types = ['Geometry', 'Graph']
 
@@ -589,7 +594,7 @@ def system_dash(
 		graphs, contours = jsonpickle.loads(data)
 
 		copper_loss, iron_loss, bus_power, mechanical_power, torque = graphs
-		thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour, vbal_contour = contours
+		thermal_contours, acceleration_contours, fw_lim_contour, efficiency_contour, vbal_contour, saturation_contour = contours
 
 		dissipation = copper_loss + iron_loss
 		efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
@@ -640,6 +645,9 @@ def system_dash(
 		if 'Open loop' in overlay_data:
 			plot_contour(fig, vbal_contour, color='purple', name='Open loop')
 
+		if 'Saturation' in overlay_data:
+			plot_contour(fig, saturation_contour, color='gray', name='Saturation linear limit')
+
 		# add x axis
 		fig.add_trace(
 			go.Scatter(x=x_range, y=x_range*0, name='x-axis', mode='lines', line_color='gray', showlegend=False,)
@@ -662,4 +670,3 @@ def system_dash(
 		return fig
 
 	return app
-

@@ -44,11 +44,38 @@ def generic_capacity(mass: Mass):
 	return Capacity.init(mass=mass, context=['mass'], scaling=scalings).from_dimensional(attrs=attrs)
 
 
+@dataclass
+class Conductivity(Scaled, Base):
+	"""basic motor conductivity model"""
+	geometry: "Geometry"
+
+	# velocities in m/s
+	linear: float = 0			# free stream velocity
+	circumferential: float = 0	# velocity at the airgap
+
+	statorade: float = 1.0
+	side_exposure: float = 1.0		# weighting factor; how much of the motor is exposed to free stream velocity
+	rim_exposure: float = 1.0		# set to zero in case a tire is mounted directly on the motor, for instance
+	vented: float = 0.0				# coupling between outside and inside air
+	potted: float = 1.0				# coil-stator potting
+	emissivity: float = 1.0			# black body properties of materials
+
+	@staticmethod
+	def expand(scalings, attrs):
+		"""Expand variable-length conductivity triplet into constant, circumference and linear vel dependent parts"""
+		p = ('', '_r', '_v')
+		q = {'': {}, '_r': {'circumferential': 1}, '_v': {'linear': 1}}
+		attrs = {k+e: v for k, mv in attrs.items() for v, e in zip(mv, p)}
+		# FIXME: creating unused scaling laws, need to zip with attrs
+		scalings = {k+e: {**v, **q[e]} for k, v in scalings.items() for e in p}
+		return scalings, attrs
+
+
 def basic_conductivity(geometry, K0, Kc, Kl, linear, circumferential):
 	# NOTE: triplets are constant, radial and linear velocity scaled components
 	attrs = {
 		'coils_stator': (10, ),	# generic big number; only seperate coils and stator because API calls for it
-		'stator_air': (K0, K0+Kc, K0+Kl),
+		'stator_air': (K0, Kc, Kl),
 	}
 
 	scalings = {

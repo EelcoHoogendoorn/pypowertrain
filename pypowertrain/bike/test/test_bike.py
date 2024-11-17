@@ -20,10 +20,10 @@ def test_example(kmh=40, inch=20):
 			motor=grin.all_axle(turns=8),
 			controller=odrive.pro(),
 		),
-		battery=define_battery_limits(v=58, wh=500),
+		battery=define_battery(v=58, wh=500),
 	)
 
-	system_plot(bike)
+	system_plot(bike, annotations='tdeosa')
 	# system_dash(bike).run()
 
 

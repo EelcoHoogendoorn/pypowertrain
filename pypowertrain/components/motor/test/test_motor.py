@@ -4,7 +4,7 @@ from pypowertrain.components.motor.motor import Motor
 
 
 def test_motor():
-	geo = Geometry(
+	geo = Geometry.create(
 		poles=46,
 		slots=42,
 		turns=5,

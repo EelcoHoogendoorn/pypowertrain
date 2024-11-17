@@ -81,6 +81,7 @@ class Geometry(Base):
 		)
 
 	# FIXME: turn these into independent setters?
+	# FIXME: need to call .replace to trigger rescale recursively... kinda odd, tripping nyself up with it
 	def rescale(self,
 		length_scale=1,	# stack length
 		radius_scale=1,	# radius
@@ -258,26 +259,41 @@ class Geometry(Base):
 		"""total amount of mu-0 reluctance in the circuit"""
 		return self.airgap + self.magnet_height
 
+	@property
+	def stator_flux_area(self):
+		return self.tooth_width * self.slots * self.gap_length
+
 	# FIXME: move below to electrical? they are pseudo-geometrical properties i guess
 	@property
-	def iron_field_scale(self):
-		"""scaling factor proportional to iron field density"""
-		teeth_area = self.tooth_width * self.slots * self.gap_length
-		return self.pm_flux_scale / teeth_area
-	@property
 	def pm_flux_scale(self):
-		"""scaling factor proportional to total pm flux"""
+		"""scaling factor proportional to total pm flux in the circuit"""
+		# FIXME account for tip-fraction here as well?
+		#  account for default remanence?
+		# Br = 1.3
+		# B_gap = self.magnet_height / self.reluctance_length * Br
 		return self.magnets_volume / self.reluctance_length
 		# https://www.e-magnetica.pl/doku.php/flux_fringing
 	@property
 	def em_flux_scale(self):
-		"""em-flux per amp"""
+		"""scaling factor proportional to em-flux in the circuit per phase amp"""
 		mu0 = 1.256e-6
-		return self.turns / self.reluctance_length * (self.gap_area*0.9) * mu0
+		tip_fraction = 0.9 # mu0-path is constricted by gap between teeth, so cant use full gap area # FIXME: configurable
+		# FIXME: set this per-tooth? nah field conversion not per tooth either
+		reluctance = self.reluctance_length / (self.gap_area*tip_fraction * mu0)
+		mmf = self.turns	# mmf per phase amp
+		return mmf / reluctance
+	@property
+	def iron_pm_field_scale(self):
+		"""scaling factor proportional to pm-induced stator iron field density"""
+		return self.pm_flux_scale / self.stator_flux_area
+	@property
+	def iron_em_field_scale(self):
+		"""scaling factor proportional to em-tesla in the stator iron per phase amp"""
+		return self.em_flux_scale / self.stator_flux_area
 
 	@property
 	def side_area(self):
-		"""side pate area"""
+		"""side plate area"""
 		return self.outer_radius ** 2 * np.pi
 
 	@property

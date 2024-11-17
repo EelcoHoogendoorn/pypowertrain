@@ -1,30 +1,19 @@
-import matplotlib.pyplot as plt
-import numpy as np
 
 from pypowertrain.system import *
 from pypowertrain.library import grin
 from pypowertrain.components.battery import *
 
 
+
 def test_grin():
 	# FIXME: link to empirical data!
 	system = System(
-		actuator=grin.actuator(turns=8),
+		actuator=grin.actuator(turns=5),
 		battery=define_battery_75v(),
 	)
-	# print(system.actuator.motor.thermal)
-	# return
-	print(system.actuator.motor.iron_drag(np.linspace(0, 100, 10)))
-	print(system.actuator.motor.R)
-	print(system.actuator.motor.L*1000)
-	print('dimensionless drag')
-	print('field', system.actuator.motor.geometry.iron_field_scale)
-	d0=(system.actuator.motor.electrical.attrs['d_0'])
-	d1=(system.actuator.motor.electrical.attrs['d_1'])
-	print(d0, d1, d0 / d1)
-	print(system.actuator.motor.electrical.d_0,system.actuator.motor.electrical.d_1)
-	print(system.actuator.motor.electrical.attrs)
-	system.actuator.plot()
+
+	# system.actuator.plot()
+	system_plot(system)
 
 
 def test_drag():
@@ -35,15 +24,13 @@ def test_drag():
 	Translated into dimensionless units
 	"""
 	motor = grin.all_axle()
-	f = motor.mass.stator * motor.mass.geometry.gap_radius
-	print(0.453/f, 0.00052/f)
 	import matplotlib.pyplot as plt
 	kmh = np.linspace(0, 50, 100)
 	rpm = kmh * 10
 	drag =motor.electrical.iron_drag(rpm/60)
 	print(motor.electrical.d_1)
 	plt.plot(kmh, drag)
-	motor = motor.replace(frequency_scale=0.8)
+	motor = motor.replace(frequency_scale=0.85, slot_depth_scale=0.4)
 	print(motor.electrical.d_1)
 	drag =motor.electrical.iron_drag(rpm/60)
 	plt.plot(kmh, drag)

@@ -78,7 +78,7 @@ def D6374_150KV():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		Kv=150,
+		phase_to_phase_Kv=150,
 		phase_to_neutral_R=39e-3,	# FIXME: same as 270kv? seems liek an error
 		phase_to_neutral_L=24e-6,
 	)
@@ -107,7 +107,7 @@ def D5065_270KV():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		Kv=270,
+		phase_to_phase_Kv=270,
 		phase_to_neutral_R=39e-3,
 		phase_to_neutral_L=15.7e-6,
 	)
@@ -136,7 +136,7 @@ def M8325s_100KV():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		Kv=100,			# FIXME: data entry problem? we struggle to match realistic values here in test_compare
+		phase_to_phase_Kv=100,			# FIXME: data entry problem? we struggle to match realistic values here in test_compare
 		phase_to_neutral_R=24e-3,
 		phase_to_neutral_L=9.97e-6,
 	)

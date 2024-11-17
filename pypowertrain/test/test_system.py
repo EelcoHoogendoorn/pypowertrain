@@ -26,9 +26,9 @@ def test_plot():
 	print(system.actuator.motor.electrical.Ld)
 	print(system.actuator.motor.electrical.Lq)
 	# system = mod_lq(system, -0.4)	# high Lq; inset magnet
-	system = mod_lq(system, 0.6)	# low Lq; lobed rotor
+	# system = mod_lq(system, 0.6)	# low Lq; lobed rotor
 	print(system.actuator.motor.electrical.salience)
 	print(system.actuator.motor.electrical.Ld)
 	print(system.actuator.motor.electrical.Lq)
 	# return
-	system_plot(system, color='efficiency')
+	system_plot(system)

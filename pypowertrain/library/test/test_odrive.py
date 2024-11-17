@@ -1,3 +1,4 @@
+
 from pypowertrain.system import *
 from pypowertrain.library import odrive
 from pypowertrain.components.battery import *
@@ -8,25 +9,28 @@ def test_D6374_150KV():
 		actuator=Actuator(
 			motor=odrive.D6374_150KV(),
 			controller=odrive.pro().replace(
-				freq_limit=2000
+				freq_limit=2000,
 			),
 		),
-		battery=define_battery_58v(),
+		battery=define_battery(v=24, wh=1e3),
 	)
 	system_plot(system)
 
 
 def test_D5065_270KV():
+	# FIXME: this combo has a very hugh ripple current
+	#  leads to artificially restricted performance; need to tune model accordingly
 	system = System(
 		actuator=Actuator(
 			motor=odrive.D5065_270KV(),
-			controller=odrive.pro().replace(
-				freq_limit=2000
+			controller=odrive.micro().replace(
+				freq_limit=2000,
+				field_weakening=True,
 			),
 		),
-		battery=define_battery_58v(),
+		battery=define_battery(v=24, wh=1e3),
 	)
-	system_plot(system)
+	system_plot(system, color='dissipation', annotations='tdeos')
 
 
 def test_M8325s_100KV():
@@ -37,7 +41,7 @@ def test_M8325s_100KV():
 				freq_limit=2000
 			),
 		),
-		battery=define_battery_58v(),
+		battery=define_battery(v=58, wh=1000),
 	)
 	system_plot(system)
 
@@ -52,17 +56,37 @@ def test_botwheel():
 			motor=odrive.botwheel().replace(
 				turns=4
 			),
-			controller=odrive.s1().replace(
-				bus_voltage_limit=24,
+			controller=odrive.pro().replace(
+				field_weakening=True,
 			),
 		),
-		battery=define_battery_limits(v=24, wh=1e3).replace(
+		battery=define_battery(v=48, wh=1e3),
+	)
+	# system.actuator.motor.electrical.attrs['saturation'] =1000
+	system_plot(system, color='power')
+
+
+def test_botwheel_anim():
+	"""Code for generating an animated GIF"""
+	system = System(
+		actuator=Actuator(
+			motor=odrive.botwheel(),
+			controller=odrive.micro().replace(
+				field_weakening=True,
+			),
+		),
+		battery=define_battery(v=24, wh=1e3).replace(
 			charge_state=0.99
 		),
-		# battery=define_battery_58v(),
 	)
-	system.actuator.plot()
-	system_plot(system)
+
+	import matplotlib.pyplot as plt
+	for i in range(2, 12):
+		system = system.replace(__turns=i)
+		system_plot(system, max_rpm=1000, max_torque=33)
+		plt.savefig(f'rewind{i}.png')
+		plt.close()
+
 
 
 def test_botwheel_thermal_resistance():

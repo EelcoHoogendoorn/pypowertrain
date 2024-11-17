@@ -47,9 +47,12 @@ class Actuator(Base):
 
 	@property
 	def ripple_current(self):
+		# FIXMe: quite important to make this a function of duty cycle
 		voltage = self.controller.bus_voltage_limit * self.n_series	# FIXME: conservative; pass in from battery?
 		ripple = lambda L: voltage / (2*self.controller.ripple_freq*L) / np.sqrt(2) / np.sqrt(3)
-		return np.sqrt(ripple(self.motor.electrical.Lq)**2 + ripple(self.motor.electrical.Ld)**2)
+		ripple_delta = lambda L, D: voltage / (self.controller.ripple_freq*L * D * (1-D))  	# peak to peak variation
+		return (ripple(self.motor.electrical.Lq) + ripple(self.motor.electrical.Ld)) / 2
+		# return np.sqrt(ripple(self.motor.electrical.Lq)**2 + ripple(self.motor.electrical.Ld)**2)
 
 	@property
 	def phase_resistance(self):

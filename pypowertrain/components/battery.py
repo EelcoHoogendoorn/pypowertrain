@@ -23,6 +23,10 @@ class Cell(Base):
 	def voltage(self, state):
 		return self.minimum_voltage + (self.maximum_voltage - self.minimum_voltage) * state
 
+	def state_from_voltage(self, V):
+		return (V - self.minimum_voltage) / (self.maximum_voltage - self.minimum_voltage)
+
+
 
 @dataclass
 class Battery(Base):
@@ -65,6 +69,13 @@ class Battery(Base):
 	def peak_charge_power(self):
 		return self.peak_charge_current * self.voltage
 
+	def charge_to_voltage(self, V):
+		s = self.cell.state_from_voltage(V / self.S)
+		assert 0 <= s <= 1
+		return self.replace(charge_state=s)
+
+
+
 
 samsung_21700 = Cell(
 	maximum_voltage=4.2,
@@ -75,7 +86,7 @@ samsung_21700 = Cell(
 	capacity=4.9,       # Ah
 	peak_discharge=8,	# in units of C
 	peak_charge=5,
-	mass=70e-3,
+	mass=70e-3,			# in kg
 )
 
 
@@ -97,13 +108,13 @@ def define_battery_ideal():
 	"""define an effectively unlimited power source"""
 	return Battery(
 		cell=samsung_21700,
-		S=1000, P=1000,
+		S=1000, P=100,
 	)
 
 
-def define_battery_limits(v, wh, cell=samsung_21700):
+def define_battery(v, wh=1, cell=samsung_21700):
 	"""define min voltage and min capacity battery"""
 	S = np.ceil(v / cell.maximum_voltage)
 	N = wh / (cell.capacity * cell.nominal_voltage)
 	P = np.ceil(N / S)
-	return Battery(cell=cell, S=S, P=P)
+	return Battery(cell=cell, S=S, P=P).charge_to_voltage(v)

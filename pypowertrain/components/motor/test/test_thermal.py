@@ -56,7 +56,6 @@ def test_utils():
 
 	temps = thermal.solve({'coils': 200}, dt=100)
 	print(temps)
-	# FIXME: rescaling appears broken? but replace does work?
 	print(thermal.capacity.mass.geometry.radius)
 	print(thermal.conductivity.geometry.radius)
 	# print(list(thermal.conductivity.values()))
@@ -73,6 +72,7 @@ def test_utils():
 
 
 def test_plot_rpm():
+	"""plot W/K over a speed range"""
 	import matplotlib.pyplot as plt
 	dt = 1e4
 	kph = np.linspace(0, 50, 100)
@@ -92,6 +92,7 @@ def test_plot_rpm():
 
 
 def test_plot_temporal():
+	"""check fit of our thermal model versus published grin raw data"""
 	# https://electricbike-blog.com/2015/12/18/ferrofluids-join-the-ebike-motor-cooling-revolution/
 	import matplotlib.pyplot as plt
 	t = np.linspace(0, 5000, 100)

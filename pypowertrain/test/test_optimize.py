@@ -10,7 +10,7 @@ def test_optimize_torque():
 	battery = define_battery_75v()
 	gearing = Gearing(ratio=1, weight=1, efficiency=0.95, torque_limit=200, thickness=1e-2)
 	actuator = grin.actuator(turns=8).replace(
-		gearing=gearing,
+		# gearing=gearing,
 		motor=grin.all_axle(turns=5),
 		controller=odrive.pro_overclock(),
 	)
@@ -71,7 +71,7 @@ def test_optimize_botwheel():
 			motor=odrive.botwheel(),
 			controller=odrive.pro(),
 		),
-		battery=define_battery_limits(v=58, wh=1e3),
+		battery=define_battery(v=58, wh=1e3),
 	)
 
 	bounds = {

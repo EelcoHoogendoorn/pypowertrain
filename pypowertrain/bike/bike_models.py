@@ -13,15 +13,15 @@ def define_ebike(kmh, inch=24, turns=8):
 			Cr=0.004,
 			structure_weight=15,
 			nominal_kmh=kmh,
-			wheel_diameter=inch*25.4e-3
+			wheel_diameter=inch*25.4e-3,
+			front=False, rear=True,
 		),
 		actuator=grin_actuator,
-		front=False, rear=True,
 		battery=define_battery_75v(P=2),
 	)
 
 
-def define_moped(front=False):
+def define_moped(front=False, rear=True):
 	"""light moped with a grin actuator"""
 	grin_actuator = grin.actuator(turns=5)
 	return BikeSystem(
@@ -31,10 +31,10 @@ def define_moped(front=False):
 			structure_weight=30,
 			nominal_kmh=50,
 			wheel_diameter=0.5,  # 20inch wheel moped
-			front=front, rear=True,
+			front=front, rear=rear,
 		),
 		actuator=grin_actuator,
-		battery=define_battery_limits(v=75, wh=2500),
+		battery=define_battery(v=75, wh=2500),
 	)
 
 
@@ -66,5 +66,5 @@ def define_motorcycle():
 			front=True, rear=True,
 		),
 		actuator=actuator,
-		battery=define_battery_limits(v=75, wh=2500),
+		battery=define_battery(v=75, wh=2500),
 	)

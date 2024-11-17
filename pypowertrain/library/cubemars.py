@@ -19,10 +19,10 @@ def R100():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		# Kv=90*1.25,	# this fits the specs better?
-		Kv=90,
+		phase_to_phase_Kv=90,
 		phase_to_phase_R=51e-3,
 		phase_to_phase_L=33e-6,
+		# saturation=11,	# 11 is specced peak on the website; prob a value a bit over saturation?
 	)
 
 	# FIXME: large normalizer to match geometry to motor specs
@@ -54,9 +54,10 @@ def RO100():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		Kv=55,
+		phase_to_phase_Kv=55,
 		phase_to_phase_R=143e-3,
 		phase_to_phase_L=137e-6,
+		# saturation=12,
 	)
 
 	# FIXME: make frameless specific weight model?

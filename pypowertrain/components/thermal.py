@@ -58,30 +58,3 @@ class Thermal(Base):
 class Capacity(Scaled, Base):
 	"""Just slap a rescaling cp around the mass model"""
 	mass: "Mass"
-
-
-@dataclass
-class Conductivity(Scaled, Base):
-	# FIXME: these classes are motor-specific functionaliy, really
-	geometry: "Geometry"
-
-	# velocities in m/s
-	linear: float = 0			# free stream velocity
-	circumferential: float = 0	# velocity at the airgap
-
-	statorade: float = 1.0
-	side_exposure: float = 1.0		# weighting factor; how much of the motor is exposed to free stream velocity
-	rim_exposure: float = 1.0		# set to zero in case a tire is mounted directly on the motor, for instance
-	vented: float = 0.0				# coupling between outside and inside ait
-	potted: float = 1.0				# coil-stator potting
-	emissivity: float = 1.0			# black body properties of materials
-
-	@staticmethod
-	def expand(scalings, attrs):
-		"""Expand variable-length conductivity triplet into constant, circumference and linear vel dependent parts"""
-		p = ('', '_r', '_v')
-		q = {'': {}, '_r': {'circumferential': 1}, '_v': {'linear': 1}}
-		attrs = {k+e: v for k, mv in attrs.items() for v, e in zip(mv, p)}
-		# FIXME: creating unused scaling laws, need to zip with attrs
-		scalings = {k+e: {**v, **q[e]} for k, v in scalings.items() for e in p}
-		return scalings, attrs

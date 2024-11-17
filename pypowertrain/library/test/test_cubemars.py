@@ -12,7 +12,6 @@ def test_cubemars_R100():
 			motor=cubemars.R100(),
 			controller=define_ideal_controller().replace(
 				bus_voltage_limit=48,
-				# modulation_factor=1,  # need the full 48V to match to large rpm=0 torque peak
 			),
 		),
 		battery=define_battery_75v(),
@@ -28,10 +27,7 @@ def test_cubemars_RO100():
 		actuator=Actuator(
 			motor=cubemars.RO100(),
 			controller=define_ideal_controller().replace(
-				# field_weakening=False,
 				bus_voltage_limit=48,
-				# modulation_factor=1/np.sqrt(3)
-				modulation_factor=1,
 			),
 		),
 		battery=define_battery_75v(),
@@ -50,7 +46,7 @@ def test_cubemars_RI100():
 			motor=cubemars.RI100(),
 			controller=define_ideal_controller().replace(
 				bus_voltage_limit=48,
-				modulation_factor=1,	# need the full 48V to match to large rpm=0 torque peak
+				# modulation_factor=1,	# need the full 48V to match to large rpm=0 torque peak
 			),
 		),
 		battery=define_battery_75v(),
