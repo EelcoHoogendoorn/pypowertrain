@@ -16,7 +16,7 @@ def test_example(kmh=40, inch=20):
 			motor=grin.all_axle(turns=8),
 			controller=odrive.pro(),
 		),
-		battery=define_battery_limits(v=58, wh=500),
+		battery=define_battery(v=58, wh=500),
 		load=BikeLoad(
 			CdA=0.7 * 0.8,
 			Cr=0.004,
@@ -30,7 +30,7 @@ def test_example(kmh=40, inch=20):
 
 	system_plot(bike, annotations='tdeosa')
 ```
-<img src="./grin_with_odrive.png" width="400" height="300"/>
+<img src="./grin_with_odrive.png" width="400" height="300" />
 
 This package has functionality for [optimizing](./pypowertrain/test/test_optimize.py) over all components of a powertrain, such as motor geometry, battery configuration or controller parameters, to attain certain design constraints, while minimizing objectives such as weight or cost. Currently, the only physical systems implemented are vehicles, but it is designed to be easy to extend to robotic actuators, quadcopters, wind turbines, or you name it.
 

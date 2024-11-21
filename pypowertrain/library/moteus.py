@@ -15,7 +15,7 @@ def n1():
 		length=46e-3,
 		height=8e-3,
 		weight=14.6e-3,
-		modulation_factor=0.9 / 2,	# curent moteus firmware uses sinusoidal commutation
+		modulation_factor=0.9 / np.sqrt(3),	# as per SVPWM firmware update https://github.com/mjbots/moteus/releases/tag/0.1-20241114
 	)
 
 
@@ -32,7 +32,7 @@ def r4():
 		length=53e-3,
 		height=8e-3,
 		weight=14.2e-3,
-		modulation_factor=0.9 / 2,
+		modulation_factor=0.9 / np.sqrt(3),	# as per SVPWM firmware update https://github.com/mjbots/moteus/releases/tag/0.1-20241114
 	)
 
 
@@ -49,7 +49,7 @@ def c1():
 		length=38e-3,
 		height=9e-3,
 		weight=8.9e-3,
-		modulation_factor=0.9 / 2,
+		modulation_factor=0.9 / np.sqrt(3),	# as per SVPWM firmware update https://github.com/mjbots/moteus/releases/tag/0.1-20241114
 	)
 
 
@@ -61,7 +61,7 @@ def mj5208():
 		turns=7, # fitted to dimensionless attrs
 		coil_fill=0.45,
 		slot_depth_fraction=0.4,
-		slot_width_fraction=0.4,
+		slot_width_fraction=0.4,	# FIXME: important to know if we want to base dimensionless saturation on this
 
 		gap_diameter=54e-3,
 		gap_length=8e-3,
