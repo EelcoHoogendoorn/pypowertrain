@@ -28,7 +28,8 @@ class Geometry(Base):
 
 
 	slot_depth_fraction: float	# fraction of gap radius
-	slot_width_fraction: float = 0.5  # tooth iron/copper ratio. or tooth_fraction?
+	# FIXME: tooth_width is more descriptive; since its a constant value, and slot may be sloping
+	slot_width_fraction: float = 0.5  # tooth iron/copper ratio, near the airgap
 
 	airgap: float = 0.8e-3
 	coil_fill: float = 0.6	# FIXME: rename fraction?

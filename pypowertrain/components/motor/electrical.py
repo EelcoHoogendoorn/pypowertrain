@@ -184,9 +184,11 @@ class Electrical(Scaled, Base):
 
 	@property
 	def R(self):
+		"""R in the q/d frame, such that dissipated power is P=I^2*R"""
 		return self.R_ew + self.R_co
 	@property
 	def L(self):
+		"""L in the q/d frame; dI/dt per V, in the circuit from phase A->BC"""
 		return self.L_ew + self.L_co
 	@property
 	def Lq(self):

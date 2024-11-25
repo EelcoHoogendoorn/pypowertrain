@@ -114,6 +114,8 @@ def system_limits(
 	that attain a given torque, with the least energy consumption,
 	where possible, given the various physical constraints along the powertrain
 
+	Note that the logic implemented here is FOC and BLDC specific
+
 	Parameters
 	----------
 	system: System
@@ -138,7 +140,7 @@ def system_limits(
 		# FIXME: are we at all interested in positive Id? prob not, saturation limits sensible Id
 		arange = np.linspace(-actuator.phase_current_limit, +actuator.phase_current_limit*0.0, gridsize+1)
 	else:
-		arange = np.array([0.])	# always pursue Id=0
+		arange = np.array([0.])	# always pursue Id=0; any nonzero Id implicitly considered an invalid state
 
 	# map output ranges to motor ranges
 	# FIXME: gearing efficiency makes torque function of rpm, through sign alone.
@@ -151,12 +153,16 @@ def system_limits(
 	Iq = em_torque / (3/2) / motor.geometry.pole_pairs / (motor.flux + Id * salience)
 
 	# apply inverse saturation curve to Iq
+	# FIXME: this makes sense for low rpm non-salient motors operating near Id=0;
+	#  but in the general case it might be more complex
+	#  saturation models are already wildly underconstrained by empirical data as is though,
+	#  little point in making things more complicated
 	Iq = Iq * motor.electrical.saturation_factor(Iq)
 
-	# should ripple count towards phase current limits? i guess so conservatively.
-	# voltage_effective = np.min(battery.voltage, controller.bus_voltage_limit) * actuator.n_series  # FIXME: conservative; pass in from battery?
 	Lm = np.sqrt(motor.electrical.Lq * motor.electrical.Ld) # geo mean of inductances
 
+	# FIXME: should ripple count towards phase current limits? i guess so conservatively.
+	#  otoh motor current limits are given in terms of pure phase current
 	Is = Id**2 + Iq**2 #+ actuator.ripple_current**2
 
 	bus_resistance = actuator.bus.resistance + battery.resistance
@@ -171,17 +177,20 @@ def system_limits(
 	Id_bal = lambda omega: omega * motor.electrical.Lq * Iq / Rt
 	Vq_bal_2 = lambda omega: Iq * Rt + omega * motor.electrical.Ld * Id_bal(omega) + omega * motor.flux
 
+	# build up boolean validity mask terms valid over all rpm
 	smask = 1
+	# controller phase current limit
+	smask = np.logical_and(smask, Is < actuator.phase_current_limit ** 2)
+	# demagnetization limit
+	smask = np.logical_and(smask, motor.electrical.demagnetiztion_factor(Iq, Id) < 1)
 
-	demag_mask = motor.electrical.demagnetiztion_factor(Iq, Id)
-	smask = np.logical_and(smask, demag_mask < 1)
-	# FIXME: crop grid to valid states for efficiency reasons?
+	# FIXME: crop mask grid to valid states for efficiency reasons?
 	# plt.figure()
 	# plt.imshow(smask)
 	# plt.show()
 
-	def process_omega(omega_axle_hz):
-		"""construct and intersect amp and V limits for a given omega"""
+	def process_frequency(omega_axle_hz):
+		"""construct and intersect all operating point limits and solve for remaining optimum, for given frequency"""
 		omega_elec_hz = omega_axle_hz * motor.geometry.pole_pairs
 		omega_axle_rad = omega_axle_hz * 2 * np.pi
 		omega_elec_rad = omega_elec_hz * 2 * np.pi
@@ -189,6 +198,7 @@ def system_limits(
 		# FIXME: work Id-FW-dependence into iron drag? Id division should be about equal to demag current limit
 		#  effect seems quite minimal in practice; like 3% kph continuous rating. not nothing tho
 		drag_torque = np.sign(omega_axle_hz) * motor.iron_drag(omega_axle_hz) #* (1+Id/300)**2
+		# NOTE: both I and R are already in the q-d frame; dont need another constant like 3/2 here.
 		copper_loss = Is*Rt
 		iron_loss = omega_axle_rad * drag_torque + omega_elec_rad**2*Is*0
 		dissipation = copper_loss + iron_loss
@@ -198,31 +208,30 @@ def system_limits(
 
 		bus_current = bus_power / battery.voltage	# FIXME: solve bus voltage sag properly; get wonky results right now for high bus resistances
 		effective_bus_voltage = battery.voltage - bus_current * bus_resistance
-		# fold in modulation depth and n-series
-		# how much DC we really feel at the bus after clipping and series
-		voltage_effective = np.minimum(battery.voltage, controller.bus_voltage_limit) * actuator.n_series  # FIXME: conservative; pass in from battery?
-		ripple_factor = voltage_effective / (controller.ripple_freq * Lm)
-		# effective_voltage = actuator.effective_voltage(effective_bus_voltage)
-
-		# how much of a voltage vector wed want versus how much DC voltage we have
+		# how much DC we really feel at the bus after clipping and series.
+		# excessive bus voltage is clipped to controller voltage rather than making it explode
+		voltage_effective = np.minimum(effective_bus_voltage, controller.bus_voltage_limit) * actuator.n_series  # FIXME: conservative; pass in from battery?
+		# how much of a voltage vector wed want versus how much DC voltage we have to work with
 		v_ratio = np.sqrt(Vlim2(omega_elec_rad)) / voltage_effective
-		D = v_ratio
-		# peak-to-peak delta
+
+		# calculate ripple losses
 		# https://www.portescap.com/en/newsroom/whitepapers/2021/10/understanding-the-effect-of-pwm-when-controlling-a-brushless-dc-motor
-		# FIXME: this is for a switching pattern with zero state (3-level)
+		# note: this is for a switching pattern with zero state (3-level)
+		D = v_ratio
+		ripple_factor = voltage_effective / (controller.ripple_freq * Lm)
 		ripple_delta = D * (1 - D) * ripple_factor  # peak to peak variation
 		ripple_loss = ripple_delta**2 / 12 * Rt	# to rms equivalent requires factor 12
 
+		# adjust power terms for ripple losses
 		# FIXME: solve this dependency better? bus power should feed back into the above; but lets assume ripple too small to impact bus behavior for now
 		copper_loss += ripple_loss
 		dissipation += ripple_loss
 		bus_power += ripple_loss
 
-		# v_margin = np.sqrt(Vlim2(omega_elec_rad)) - effective_voltage
+		# apply controller frequency limit
 		mask = np.logical_and(smask, np.abs(omega_elec_hz) < controller.freq_limit)
+		# apply voltage limit
 		mask = np.logical_and(mask, v_ratio < controller.modulation_factor)
-		# mask = np.logical_and(mask, v_margin < 0)
-		mask = np.logical_and(mask, Is < actuator.phase_current_limit**2)
 		# cap bus power
 		mask = np.logical_and(mask, bus_power < battery.peak_discharge_power)
 		mask = np.logical_and(mask, bus_power > -battery.peak_charge_power)
@@ -231,12 +240,11 @@ def system_limits(
 		# when switching large current zero bus regen braking
 		mask = np.logical_and(mask, np.abs(bus_power) < actuator.power_limit)
 
-
-		# of all valid Id options for a given em_torque, we pick the one most favorable to battery
+		# now, we pick the optimal operating conditions, of those left in the mask
+		# of all valid Id options for a given torque, we pick the one most energetically favorable
 		ma = np.ma.array(bus_power, mask=1-mask)
-		# this is a reduction over Id
-		mask = np.ma.min(ma, axis=1).mask
-		idx = np.ma.argmin(ma, axis=1)
+		mask = np.ma.min(ma, axis=1).mask 		# this is a reduction over the Id axis
+		idx = np.ma.argmin(ma, axis=1)			# this is a reduction over the Id axis
 		i = np.arange(len(trange))
 
 		# map to output torque
@@ -247,10 +255,12 @@ def system_limits(
 			for o in [copper_loss, ripple_loss, iron_loss, bus_power, mechanical_power, Iq, Id, Vq_bal_2(omega_elec_rad), mechanical_torque]
 		] + [
 			# these two measure distance to cone and distance from Iq=0
+			# FIXME: clean this up
 			v_ratio[i, idx], v_ratio[i, np.argmin(np.abs(arange))]-controller.modulation_factor
 		]
 	# good old for loop rather than vectorize over rpm; memory use might explode otherwise
-	outputs = np.array([process_omega(o) for o in rpm/60])
+	outputs = np.array([process_frequency(o) for o in rpm/60])
+	# change to [n_graphs, torque, rpm]
 	return np.moveaxis(outputs, [1, 2, 0], [0, 1, 2])
 
 
@@ -359,7 +369,7 @@ def system_plot(
 			add_label(color='black', label='Acceleration')
 		if 'e' in annotations:
 			contour(efficiency, levels=[0.9], colors='green')
-			add_label(color='green', label='90% Effciciency')
+			add_label(color='green', label='90% Efficiency')
 		if 'o' in annotations:
 			# open loop torque curve
 			contour(vbal, levels=[0], colors='brown')
