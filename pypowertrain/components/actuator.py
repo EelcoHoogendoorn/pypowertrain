@@ -28,35 +28,37 @@ class Actuator(Base):
 		A = self.phase_current_limit
 		# salience = (self.motor.Ld - self.motor.Lq)
 		salience = self.motor.electrical.salience
-		t = A * self.motor.Kt + A * A / 2 * np.abs(salience) * (3/2) * self.motor.geometry.pole_pairs
+		t = A * self.motor.Kt + A * A / 2 * np.abs(salience) * self.motor.geometry.pole_pairs
 		_, t = self.gearing.forward(1, t)
 		return t
 	@property
 	def phase_current_limit(self):
-		return np.minimum(self.controller.phase_current_limit, self.motor.phase_current_limit)
+		return self.controller.phase_current_limit
+		# return np.minimum(self.controller.phase_current_limit, self.motor.phase_current_limit)
 
 	@property
 	def power_limit(self):
 		return self.controller.power_limit * self.n_series
 
-	def effective_voltage(self, v_bus):
-		"""map voltages to effective FOC available voltage"""
-		v_bus = np.minimum(v_bus, self.controller.bus_voltage_limit)
-		return v_bus * self.controller.modulation_factor * self.n_series
+	# def effective_voltage(self, v_bus):
+	# 	"""map voltages to effective FOC available voltage"""
+	# 	v_bus = np.minimum(v_bus, self.controller.bus_voltage_limit)
+	# 	return v_bus * self.controller.modulation_factor * self.n_series
 
 
-	@property
-	def ripple_current(self):
-		# FIXMe: quite important to make this a function of duty cycle
-		voltage = self.controller.bus_voltage_limit * self.n_series	# FIXME: conservative; pass in from battery?
-		ripple = lambda L: voltage / (2*self.controller.ripple_freq*L) / np.sqrt(2) / np.sqrt(3)
-		ripple_delta = lambda L, D: voltage / (self.controller.ripple_freq*L * D * (1-D))  	# peak to peak variation
-		return (ripple(self.motor.electrical.Lq) + ripple(self.motor.electrical.Ld)) / 2
-		# return np.sqrt(ripple(self.motor.electrical.Lq)**2 + ripple(self.motor.electrical.Ld)**2)
+	# @property
+	# def ripple_current(self):
+	# 	# FIXMe: quite important to make this a function of duty cycle
+	# 	voltage = self.controller.bus_voltage_limit * self.n_series	# FIXME: conservative; pass in from battery?
+	# 	ripple = lambda L: voltage / (2*self.controller.ripple_freq*L) / np.sqrt(2) / np.sqrt(3)
+	# 	ripple_delta = lambda L, D: voltage / (self.controller.ripple_freq*L * D * (1-D))  	# peak to peak variation
+	# 	return (ripple(self.motor.electrical.Lq) + ripple(self.motor.electrical.Ld)) / 2
+	# 	# return np.sqrt(ripple(self.motor.electrical.Lq)**2 + ripple(self.motor.electrical.Ld)**2)
 
 	@property
 	def phase_resistance(self):
-		return self.motor.resistance + self.controller.resistance * self.n_series
+		f = 1.5		# FIXME: to convert per-leg to 3-phase frame
+		return self.motor.resistance + self.controller.resistance * f * self.n_series
 
 	def temperatures(self, mps, rpm, copper_loss, iron_loss, dt, key='coils'):
 		"""build motor temp graphs from heat source/sink graphs"""

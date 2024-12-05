@@ -14,17 +14,21 @@ def test_example(kmh=40, inch=20):
 			rider_weight=80,
 			nominal_kmh=kmh,
 			wheel_diameter=inch * 25.4e-3,
-			front=True, rear=True,
+			front=False, rear=True,
 		),
 		actuator=Actuator(
-			motor=grin.all_axle(turns=8),
+			motor=grin.all_axle(turns=8, statorade=True),
 			controller=odrive.pro(),
 		),
 		battery=define_battery(v=58, wh=500),
 	)
 
-	system_plot(bike, annotations='tdeosa')
-	# system_dash(bike).run()
+	print(bike.actuator.motor.mass.total)
+	# bike = bike.replace(__gap_length=45e-3)
+	print(bike.actuator.motor.mass.total)
+
+	# system_plot(bike, annotations='tdeosa')
+	system_dash(bike).run()
 
 
 def test_moped():

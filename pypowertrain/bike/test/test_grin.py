@@ -6,17 +6,19 @@ def test_ebike():
 
 	Agrees with grin simulator in broad strokes.
 
-	Load line and high speed limit seems to agree;
+	Load lines seems to agree;
 	simulator does not seem to do field weakening,
-	and motor constants as currently used to appear correct,
-	for the high speed low torque setting.
+
+	There does seem to be a disrepancy in the predicted top speed,
+	but then again we do not know the phaserunner modulation depth,
+	so we cannot really effectively hone in on that further
 
 	To make low rpm curves match, need to assume about a 5C
 	battery discharge limit; which may not be unreasonable,
 	though it is not explicitly exposed as a parameter in the grin simulator
 	"""
 	# FIXME: pretty sure I broke this somehow? or was it only workng on accident?
-	# FIXME: seems grin simulator uses trapezoidal commutation
+	# FIXME: seems grin simulator uses trapezoidal commutation? or is this an out of date comment?
 	#  https://endless-sphere.com/sphere/threads/new-2017-updates-to-ebikes-ca-motor-simulator-to-try-out.89877/post-1333469
 	inch = 20
 	bike = define_ebike(kmh=45, inch=inch, turns=8)
@@ -27,15 +29,15 @@ def test_ebike():
 		battery__cell__peak_discharge=7,	# need this to match
 		__bus__length=0,
 		__controller__phase_current_limit=200,
-		__controller__modulation_factor=1,
+		# __controller__modulation_factor=1,
 		# __controller__power_limit=20000,
 		__motor__coil_temperature=60,
 	)
 	bike.actuator.motor.electrical.attrs['d_1'] = 0
 
-	Kv = bike.actuator.motor.electrical.Kv#/1.5*2 #* 0.9
-	R = bike.actuator.motor.electrical.R / 1.5 * 2
-	L = bike.actuator.motor.electrical.L * 1000 / 1.5 * 2# *0.9
+	Kv = bike.actuator.motor.electrical.Kv#/1.5*2 #* 0.9	# FIXME: this is in q frame; convert to ll? dont know what simulator expects
+	R = bike.actuator.motor.electrical.R * 2 / 1.5
+	L = bike.actuator.motor.electrical.L * 1000 * 2 / 1.5# *0.9
 	d0 = bike.actuator.motor.electrical.d_0
 	d1 = bike.actuator.motor.electrical.d_1	/ 60 # d1 internally not in rpm
 	pp = bike.actuator.motor.geometry.pole_pairs
@@ -54,4 +56,4 @@ def test_ebike():
 	# bike.rear.motor.electrical.attrs['Kt'] *= 0.95
 	# bike.rear.motor.electrical.attrs['L_co'] *= 0.66
 
-	system_plot(bike)
+	system_plot(bike, annotations='tdeoas')

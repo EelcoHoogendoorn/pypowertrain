@@ -15,7 +15,7 @@ def n1():
 		length=46e-3,
 		height=8e-3,
 		weight=14.6e-3,
-		modulation_factor=0.9 / np.sqrt(3),	# as per SVPWM firmware update https://github.com/mjbots/moteus/releases/tag/0.1-20241114
+		modulation_factor=0.9 * Controller.commutation['svpwm'],	# as per SVPWM firmware update https://github.com/mjbots/moteus/releases/tag/0.1-20241114
 	)
 
 
@@ -32,7 +32,7 @@ def r4():
 		length=53e-3,
 		height=8e-3,
 		weight=14.2e-3,
-		modulation_factor=0.9 / np.sqrt(3),	# as per SVPWM firmware update https://github.com/mjbots/moteus/releases/tag/0.1-20241114
+		modulation_factor=0.9 * Controller.commutation['svpwm'],	# as per SVPWM firmware update https://github.com/mjbots/moteus/releases/tag/0.1-20241114
 	)
 
 
@@ -49,7 +49,7 @@ def c1():
 		length=38e-3,
 		height=9e-3,
 		weight=8.9e-3,
-		modulation_factor=0.9 / np.sqrt(3),	# as per SVPWM firmware update https://github.com/mjbots/moteus/releases/tag/0.1-20241114
+		modulation_factor=0.9 * Controller.commutation['svpwm'],	# as per SVPWM firmware update https://github.com/mjbots/moteus/releases/tag/0.1-20241114
 	)
 
 
@@ -71,9 +71,9 @@ def mj5208():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		phase_to_phase_Kv=330,
-		phase_to_neutral_R=50e-3,
-		phase_to_neutral_L=30e-6,
+		Kv_ll=330,
+		R_ll=50e-3,
+		L_ll=30e-6,
 		# d0=0.03, d1=0.00003,	# FIXME: tune iron losses? or are defaults fine?
 		saturation_nm=1.7,	# this is a practical saturation limit; a value somewhat beyond the linear region
 	)

@@ -131,6 +131,11 @@ def system_limits(
 	-------
 	https://nl.mathworks.com/help/mcb/gs/pmsm-constraint-curves-and-their-application.html#PMSMConstraintCurvesAndTheirApplicationExample-6
 	"""
+	# fiXME: really want a way to visualize limits.
+	#  idea; gather all limit factors into a normalized list of float arrays; stuff that needs to be < 1
+	#  actual operating condition selects indices with all conditions applied
+	#  limit curve graph selects indices in leave-one-out manner
+	#  where we can observe limit curves as values surpassing 1
 	actuator = system.actuator
 	battery = system.battery
 	motor = actuator.motor
@@ -148,9 +153,10 @@ def system_limits(
 	#  alternatively; dont paramerize in terms of output torque? stick with EM torque?
 	rpm, trange = actuator.gearing.backward(rpm, trange)
 
-	salience = motor.electrical.salience
+	salience = motor.electrical.salience * motor.geometry.pole_pairs	# FIXME: check constants!
+	Kt_dq = motor.Kt
 	Id, em_torque = np.meshgrid(arange, trange)
-	Iq = em_torque / (3/2) / motor.geometry.pole_pairs / (motor.flux + Id * salience)
+	Iq = em_torque / (Kt_dq + Id * salience)
 
 	# apply inverse saturation curve to Iq
 	# FIXME: this makes sense for low rpm non-salient motors operating near Id=0;
@@ -159,35 +165,49 @@ def system_limits(
 	#  little point in making things more complicated
 	Iq = Iq * motor.electrical.saturation_factor(Iq)
 
-	Lm = np.sqrt(motor.electrical.Lq * motor.electrical.Ld) # geo mean of inductances
-
 	# FIXME: should ripple count towards phase current limits? i guess so conservatively.
 	#  otoh motor current limits are given in terms of pure phase current
 	Is = Id**2 + Iq**2 #+ actuator.ripple_current**2
 
 	bus_resistance = actuator.bus.resistance + battery.resistance
-	Rt = actuator.phase_resistance
+	R_dq = actuator.phase_resistance		# resistance in dq frame of motor and controller combined
+	Ke_dq = Kt_dq / motor.geometry.pole_pairs	# V / (elec_rad / s)
+	L_d, L_q = motor.electrical.Ld, motor.electrical.Lq
 
 	# formulate voltage relations of the motor to solve for states within voltage limits
-	Vq_bal = lambda omega: Iq * Rt + omega * motor.electrical.Ld * Id + omega * motor.flux
-	Vd_bal = lambda omega: Id * Rt - omega * motor.electrical.Lq * Iq
+	# FIXME: move into electrical class? R_dq depends on controller tho
+	Vq_bal = lambda omega: Iq * R_dq + omega * L_d * Id + omega * Ke_dq
+	Vd_bal = lambda omega: Id * R_dq - omega * L_q * Iq
 	Vlim2 = lambda omega: Vq_bal(omega) ** 2 + Vd_bal(omega) ** 2
 
-	# these are rewritings of the above; solving for a fixed Iq
-	Id_bal = lambda omega: omega * motor.electrical.Lq * Iq / Rt
-	Vq_bal_2 = lambda omega: Iq * Rt + omega * motor.electrical.Ld * Id_bal(omega) + omega * motor.flux
+	# these are rewritings of the above; solving Id for a given Iq at voltage equilibrium
+	Id_bal = lambda omega: omega * L_q * Iq / R_dq
+	Vq_bal_2 = lambda omega: Iq * R_dq + omega * L_d * Id_bal(omega) + omega * Ke_dq
 
 	# build up boolean validity mask terms valid over all rpm
 	smask = 1
 	# controller phase current limit
-	smask = np.logical_and(smask, Is < actuator.phase_current_limit ** 2)
+	smask = np.logical_and(smask, Is < actuator.controller.phase_current_limit ** 2)
 	# demagnetization limit
-	smask = np.logical_and(smask, motor.electrical.demagnetiztion_factor(Iq, Id) < 1)
+	smask = np.logical_and(smask, motor.demagnetiztion_factor(Iq, Id) < 1)
 
 	# FIXME: crop mask grid to valid states for efficiency reasons?
 	# plt.figure()
 	# plt.imshow(smask)
 	# plt.show()
+
+	# mask_names = [
+	# 	'Controller current',
+	# 	'Controller frequency',
+	# 	'Controller power',
+	# 	'Demagnetization',
+	# 	'Voltage',
+	# 	'Battery discharge',
+	# 	'Battery charge',
+	# ]
+	# masks = np.array(shape=(Iq.shape + len(mask_names),), dtype=np.float32)
+	# def write_mask(name, data):
+	# 	masks[mask_names.index(name)] = data
 
 	def process_frequency(omega_axle_hz):
 		"""construct and intersect all operating point limits and solve for remaining optimum, for given frequency"""
@@ -199,14 +219,16 @@ def system_limits(
 		#  effect seems quite minimal in practice; like 3% kph continuous rating. not nothing tho
 		drag_torque = np.sign(omega_axle_hz) * motor.iron_drag(omega_axle_hz) #* (1+Id/300)**2
 		# NOTE: both I and R are already in the q-d frame; dont need another constant like 3/2 here.
-		copper_loss = Is*Rt
-		iron_loss = omega_axle_rad * drag_torque + omega_elec_rad**2*Is*0
+		copper_loss = Is * R_dq	# this 'just works' given our chosen coordinate frame
+		iron_loss = omega_axle_rad * drag_torque + omega_elec_rad**2*Is*0 # keep this rotor-eddy term in here for broadcasting
 		dissipation = copper_loss + iron_loss
 		mechanical_torque = em_torque - drag_torque
 		mechanical_power = mechanical_torque * omega_axle_rad
 		bus_power = dissipation + mechanical_power
 
-		bus_current = bus_power / battery.voltage	# FIXME: solve bus voltage sag properly; get wonky results right now for high bus resistances
+		bus_current = bus_power / battery.voltage
+		# compute bus voltage sag/rise
+		# FIXME: solve bus voltage sag properly; get wonky results right now for high bus resistances
 		effective_bus_voltage = battery.voltage - bus_current * bus_resistance
 		# how much DC we really feel at the bus after clipping and series.
 		# excessive bus voltage is clipped to controller voltage rather than making it explode
@@ -218,9 +240,9 @@ def system_limits(
 		# https://www.portescap.com/en/newsroom/whitepapers/2021/10/understanding-the-effect-of-pwm-when-controlling-a-brushless-dc-motor
 		# note: this is for a switching pattern with zero state (3-level)
 		D = v_ratio
-		ripple_factor = voltage_effective / (controller.ripple_freq * Lm)
+		ripple_factor = voltage_effective / (controller.ripple_freq * motor.electrical.L)
 		ripple_delta = D * (1 - D) * ripple_factor  # peak to peak variation
-		ripple_loss = ripple_delta**2 / 12 * Rt	# to rms equivalent requires factor 12
+		ripple_loss = ripple_delta**2 / 12 * R_dq	# to rms equivalent requires factor 12
 
 		# adjust power terms for ripple losses
 		# FIXME: solve this dependency better? bus power should feed back into the above; but lets assume ripple too small to impact bus behavior for now
@@ -255,7 +277,8 @@ def system_limits(
 			for o in [copper_loss, ripple_loss, iron_loss, bus_power, mechanical_power, Iq, Id, Vq_bal_2(omega_elec_rad), mechanical_torque]
 		] + [
 			# these two measure distance to cone and distance from Iq=0
-			# FIXME: clean this up
+			# FIXME: clean this up to be more readable
+			#  generalize into mechanism for returning all limit plots?
 			v_ratio[i, idx], v_ratio[i, np.argmin(np.abs(arange))]-controller.modulation_factor
 		]
 	# good old for loop rather than vectorize over rpm; memory use might explode otherwise

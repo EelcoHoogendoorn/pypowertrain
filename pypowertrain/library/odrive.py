@@ -15,7 +15,7 @@ def pro():
 		width=51e-3,
 		length=64e-3,
 		weight=35e-3,
-		modulation_factor=0.99 / np.sqrt(3),
+		modulation_factor=0.99 * Controller.commutation['svpwm'],
 	)
 
 def pro_nominal():
@@ -45,7 +45,7 @@ def s1():
 		width=50e-3,
 		length=66e-3,
 		weight=35e-3,
-		modulation_factor=0.7 / np.sqrt(3),
+		modulation_factor=0.7 * Controller.commutation['svpwm'],
 	)
 
 
@@ -60,7 +60,7 @@ def micro():
 		width=35e-3,
 		length=35e-3,
 		weight=7.5e-3,
-		modulation_factor=0.99 / np.sqrt(3),
+		modulation_factor=0.99 * Controller.commutation['svpwm'],
 	)
 
 
@@ -78,9 +78,9 @@ def D6374_150KV():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		phase_to_phase_Kv=150,
-		phase_to_neutral_R=39e-3,	# FIXME: same as 270kv? seems liek an error
-		phase_to_neutral_L=24e-6,
+		Kv_ll=150,
+		R_ll=39e-3,	# FIXME: same as 270kv? seems like an error
+		L_ll=24e-6,
 	)
 
 	mass = Mass.from_absolute(geometry=geometry, total=0.89)
@@ -107,9 +107,9 @@ def D5065_270KV():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		phase_to_phase_Kv=270,
-		phase_to_neutral_R=39e-3,
-		phase_to_neutral_L=15.7e-6,
+		Kv_ll=270,
+		R_ll=39e-3,
+		L_ll=15.7e-6,
 	)
 
 	mass = Mass.from_absolute(geometry=geometry, total=0.42)
@@ -136,9 +136,10 @@ def M8325s_100KV():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		phase_to_phase_Kv=100,			# FIXME: data entry problem? we struggle to match realistic values here in test_compare
-		phase_to_neutral_R=24e-3,
-		phase_to_neutral_L=9.97e-6,
+		Kv_ll=100,			# FIXME: data entry problem? we struggle to match realistic values here in test_compare
+		R_ll=24e-3,
+		L_ll=9.97e-6,
+		# termination='delta',
 	)
 
 	mass = Mass.from_absolute(geometry=geometry, total=0.840)
@@ -168,9 +169,10 @@ def botwheel():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		Kt=0.951,
-		phase_to_neutral_R=0.8,
-		phase_to_neutral_L=1.7e-3,
+		Kv_ll=8.7,
+		# Kt=0.951,
+		R_ll=0.8,
+		L_ll=1.7e-3,
 	)
 
 	mass = Mass.from_absolute(geometry=geometry, total=2.2-0.2)	# subtract rubber wheel?

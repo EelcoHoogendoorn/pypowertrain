@@ -9,6 +9,14 @@ class Controller(Base):
 
 	Note: would be neat to add IM motor control support here
 	"""
+	commutation = {
+		'sine': 0.75,
+		# cos(30^2; double inscribed circle; once to get neutral zero polygon, second to get rotational symmetry
+		'svpwm': np.sqrt(3) / 2,  # cos(30); inscribed circle in hexagon
+		'thi': np.sqrt(3) / 2,  # cos(30)	# third harmonic
+		'trapezoidal': np.sqrt(3) / 2,  # cos(30)	# works out like this?
+	}
+
 	phase_current_limit: float
 	power_limit: float
 

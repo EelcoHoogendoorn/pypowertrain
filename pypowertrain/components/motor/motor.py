@@ -15,35 +15,16 @@ class Motor(Base):
 	electrical: Electrical
 	thermal: Thermal = None
 	mass: Mass = None
-	# aero FIXME: needed for high rpm accuracy?
+	# FIXME: aero model needed for high rpm accuracy?
 
 	# FIXME: should we make these part of the thermal model?
 	coil_temperature: float = 20
 	magnet_temperature: float = 20
-	H_limit: float = 500	# safe amp-turns per mm of magnet in circuit; should be a safe value even at 80c
 
 	@property
 	def geometry(self):
 		return self.electrical.geometry
 
-	@property
-	def Kt(self):
-		return self.electrical.Kt
-	@property
-	def R(self):
-		return self.electrical.R
-	@property
-	def L(self):
-		return self.electrical.L
-
-	@property
-	def phase_current_limit(self):
-		# FIXME: EM sat limit?
-		#  would be nice to have; even if arbitrary, allows us to weight scaling of reluctance and tooth width
-		# EM_limit = 0.3	# keep EM as some fraction of PM field strength
-		# reluctance = (self.airgap + self.magnet_height) / 1.26e-6
-		# FIXME: need to work airgap into this also? should be conservative this way
-		return self.H_limit * 1000 * self.electrical.geometry.magnet_height / self.electrical.geometry.turns
 
 	def iron_drag(self, omega):
 		"""Iron drag in Nm for a given omega in mechanical Hz"""
@@ -54,34 +35,24 @@ class Motor(Base):
 	@property
 	def resistance(self):
 		"""resistance, corrected for temperature"""
-		scale = 1 + (self.coil_temperature - 20) * 0.393 / 100
-		return self.R * scale
+		# from 20-100c, copper gains 39% resistance
+		temp_derate = 1 + (self.coil_temperature - 20) / (100-20) * 0.393
+		return self.electrical.R * temp_derate
 
-	# FIXME: rename to PM flux?
 	@property
-	def flux(self):
-		"""flux, corrected for magnet temperature"""
-		# FIXME: whats the temperature relation again? lost the reference... lose like 5% at high temp?
-		#  seen some grin data saying this is conservative; nothing happening first 40c
-		temp_derate = 1 - (self.magnet_temperature - 20)/100 * 0.05
-		return self.Kt / self.electrical.geometry.pole_pairs / 1.5 * temp_derate
+	def Kt(self):
+		"""Kt, corrected for magnet temperature"""
+		# from 20 to 100c, we reversibly lose about 5% field strength (seen numbers around 8% too)
+		temp_derate = 1 - (self.magnet_temperature - 20) / (100-20) * 0.05
+		return self.electrical.Kt * temp_derate
 
-
-def from_defaults(
-	radius,
-	length,
-	slots,
-	poles,
-	weight,
-	turns=5,
-
-):
-	"""try and estimate motor props from dimensionless params as much as possible"""
-	geometry = Geometry(
-		slots=slots,
-		poles=poles,
-		gap_radius=radius,
-		gap_length=length,
-		slot_depth_fraction=0.1,	# FIXME: estimate from mass?
-	)
+	def demagnetiztion_factor(self, Iq, Id):
+		"""If this factor is < 1, demagnetization should not occur"""
+		# from 60 to 120c, neodymium typically shift knee halfway to the right
+		#  shift of the knee tends to be pretty linear
+		temp_derate = 1 - (self.magnet_temperature - 60) / (120-60) * 0.5
+		demagnetization = self.electrical.demagnetization * temp_derate
+		Id = Id / demagnetization
+		Iq = Iq / demagnetization * self.electrical.demagnetization_ratio
+		return -np.abs(Id) * Id + Iq * Iq
 

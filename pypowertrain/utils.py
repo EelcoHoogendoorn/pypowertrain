@@ -39,7 +39,6 @@ def expand_paths(k, obj):
 class Base:
 	"""Base class for immutable data class hierarchy,
 	that allows for replacing and rescaling attributes"""
-	# FIXME: replace the rescale paradigm with pure cached property logic?
 
 	def replace_norescale(self, **kwargs):
 		return dataclasses.replace(self, **kwargs)

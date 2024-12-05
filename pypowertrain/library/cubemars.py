@@ -19,9 +19,9 @@ def R100():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		phase_to_phase_Kv=90,
-		phase_to_phase_R=51e-3,
-		phase_to_phase_L=33e-6,
+		Kv_ll=90,
+		R_ll=51e-3,
+		L_ll=33e-6,
 		# saturation=11,	# 11 is specced peak on the website; prob a value a bit over saturation?
 	)
 
@@ -54,9 +54,9 @@ def RO100():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		phase_to_phase_Kv=55,
-		phase_to_phase_R=143e-3,
-		phase_to_phase_L=137e-6,
+		Kv_ll=55,
+		R_ll=143e-3,
+		L_ll=137e-6,
 		# saturation=12,
 	)
 
@@ -90,9 +90,9 @@ def RI100():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		Kt=0.104,
-		phase_to_phase_R=126e-3,
-		phase_to_phase_L=366.7e-6,
+		Kt_dq=0.104,
+		R_ll=126e-3,
+		L_ll=366.7e-6,
 	)
 
 	# FIXME: make drone motor specific weight model?

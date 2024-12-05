@@ -12,7 +12,7 @@ def test_D6374_150KV():
 				freq_limit=2000,
 			),
 		),
-		battery=define_battery(v=24, wh=1e3),
+		battery=define_battery(v=48, wh=1e3),
 	)
 	system_plot(system)
 
@@ -23,7 +23,7 @@ def test_D5065_270KV():
 	system = System(
 		actuator=Actuator(
 			motor=odrive.D5065_270KV(),
-			controller=odrive.micro().replace(
+			controller=odrive.pro().replace(
 				freq_limit=2000,
 				field_weakening=True,
 			),
@@ -54,7 +54,7 @@ def test_botwheel():
 	system = System(
 		actuator=Actuator(
 			motor=odrive.botwheel().replace(
-				turns=4
+				turns=5
 			),
 			controller=odrive.pro().replace(
 				field_weakening=True,

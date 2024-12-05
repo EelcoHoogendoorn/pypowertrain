@@ -158,6 +158,10 @@ def system_dash(
 		'Open loop',
 		'Saturation'
 	]
+	termination_options = [
+		'star',
+		'delta'
+	]
 	plot_types = ['Geometry', 'Graph']
 
 	app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -210,6 +214,9 @@ def system_dash(
 		html.Label('Frequency scale'),
 		dcc.Slider(0.5, 1.5, 0.1, value=1, id='frequency-slider'),
 		dbc.Tooltip(frequency_tooltip, target='frequency-slider'),
+		html.Label('Termination'),
+		dcc.Dropdown(termination_options, system.actuator.motor.electrical.geometry.termination, id='termination-selection'),
+
 	])
 	battery_tab = dbc.Tab(label='Battery', children=[
 		html.Label('Battery charge'),
@@ -413,6 +420,7 @@ def system_dash(
 		Input('slot-width-slider', 'value'),
 		Input('reluctance-slider', 'value'),
 		Input('frequency-slider', 'value'),
+		Input('termination-selection', 'value'),
 
 		Input('charge-slider', 'value'),
 		Input('P-slider', 'value'),
@@ -425,7 +433,7 @@ def system_dash(
 		Input('thermal', 'data'),
 	)
 	def compute_handler_system(
-			motor, turns, radius, slot_depth, length, slot_width, reluctance, frequency,
+			motor, turns, radius, slot_depth, length, slot_width, reluctance, frequency, termination,
 			charge, P, S,
 			controller, n_series,
 			load,
@@ -449,6 +457,7 @@ def system_dash(
 			__geometry__slot_width_scale=slot_width,
 			__geometry__reluctance_scale=reluctance,
 			__geometry__frequency_scale=frequency,
+			__geometry__termination=termination,
 
 			battery__charge_state=charge,
 			battery__P=P,

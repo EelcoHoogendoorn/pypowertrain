@@ -19,12 +19,12 @@ def test_motor():
 	print(geo)
 	electrical = Electrical.from_absolute(
 		geometry=geo,
-		Kt=1.0,
-		phase_to_phase_R=200e-3,
-		phase_to_phase_L=400e-6,
+		Kt_dq=1.0,
+		R_ll=200e-3,
+		L_ll=400e-6,
 		d0=0.45,
 		d1=0.0005,
-		salience=0,
+		salience_ratio=0,
 	)
 
 	motor = Motor(electrical=electrical)

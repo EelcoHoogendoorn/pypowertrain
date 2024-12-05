@@ -17,9 +17,9 @@ def fixture():
 
 	elec = Electrical.from_absolute(
 		geometry=geo,
-		Kt=1.0,
-		phase_to_phase_R=0.1,
-		phase_to_phase_L=0.2e-3,
+		Kt_dq=1.0,
+		R_ll=0.1,
+		L_ll=0.2e-3,
 		d0=0.45, d1=5e-4,
 		saturation_nm=100,
 	)
