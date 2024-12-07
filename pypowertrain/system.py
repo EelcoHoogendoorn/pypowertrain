@@ -136,6 +136,9 @@ def system_limits(
 	#  actual operating condition selects indices with all conditions applied
 	#  limit curve graph selects indices in leave-one-out manner
 	#  where we can observe limit curves as values surpassing 1
+	#  nope.. kinda fails for voltage limit already. its 1 in entire FW region. dropping volt limit will produce large jumps
+	#  seems like both sides of the FW region would require special treatment already.
+
 	actuator = system.actuator
 	battery = system.battery
 	motor = actuator.motor
@@ -153,7 +156,7 @@ def system_limits(
 	#  alternatively; dont paramerize in terms of output torque? stick with EM torque?
 	rpm, trange = actuator.gearing.backward(rpm, trange)
 
-	salience = motor.electrical.salience * motor.geometry.pole_pairs	# FIXME: check constants!
+	salience = motor.electrical.salience * motor.geometry.pole_pairs
 	Kt_dq = motor.Kt
 	Id, em_torque = np.meshgrid(arange, trange)
 	Iq = em_torque / (Kt_dq + Id * salience)
@@ -166,8 +169,8 @@ def system_limits(
 	Iq = Iq * motor.electrical.saturation_factor(Iq)
 
 	# FIXME: should ripple count towards phase current limits? i guess so conservatively.
-	#  otoh motor current limits are given in terms of pure phase current
-	Is = Id**2 + Iq**2 #+ actuator.ripple_current**2
+	#  otoh motor current limits are given in terms of pure phase current, already factoring in ripple
+	I_squared = Id**2 + Iq**2 #+ actuator.ripple_current**2
 
 	bus_resistance = actuator.bus.resistance + battery.resistance
 	R_dq = actuator.phase_resistance		# resistance in dq frame of motor and controller combined

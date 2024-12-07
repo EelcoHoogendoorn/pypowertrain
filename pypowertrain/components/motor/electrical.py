@@ -32,13 +32,6 @@ phase_dq = {
 ll_dq = {
 	'R': 3/4, 'L': 3/4, 'Kt': np.sqrt(3)/2, 'Kv': 2/np.sqrt(3)
 }
-# FIXME: how to convert to star-equivalent amps? or phase-magnitude amps in the delta case?
-L_M = {
-	'star': {'A': 1},	# peak line amps * 1 = peak phase amps
-	'delta': {'A': np.sqrt(3)/2},   #
-}
-# convert line to line quantities into dq frame
-ll_to_star_dq = {'R': 3/4, 'L': 3/4, 'Kt': np.sqrt(3)/2}
 
 
 @dataclass
@@ -220,6 +213,8 @@ class Electrical(Scaled, Base):
 		else:
 			# this value is proportional to amount of EM-induced field in the stator iron in T.
 			# this seems to be a decent default
+			# FIXME: mj5208 measurement comes in at half this value
+			#  missing something in dimensional analysis?
 			nondim_attrs['saturation'] = 0.25
 
 		if demagnetization_amps is not None:
@@ -246,26 +241,26 @@ class Electrical(Scaled, Base):
 				from_dimensional(attrs).from_dimensionless(nondim_attrs))
 
 	@property
-	def Kv(self): # rpm/V
-		"""Kv in dq frame, in V/rpm"""
+	def Kv(self):
+		"""Kv in dq frame, in rpm/V"""
 		return Kv_from_Kt(self.Kt)
 	@property
 	def Km(self):
-		"""Km in dq frame; Nm per unit power"""
+		"""Km; Nm per unit resistive dissipation"""
 		return self.Kt / np.sqrt(self.R)
 
 	@property
 	def Kt(self):
-		"""Kt in dq frame"""
-		return self.Kt_ #* phase_dq[self.geometry.termination]['Kt']
+		"""Kt in dq frame; Nm per amplitude of 3-phase current"""
+		return self.Kt_
 	@property
 	def R(self):
 		"""R in dq frame"""
-		return (self.R_ew + self.R_co) #* phase_dq[self.geometry.termination]['R']
+		return self.R_ew + self.R_co
 	@property
 	def L(self):
 		"""L in dq frame"""
-		return (self.L_ew + self.L_co) #* phase_dq[self.geometry.termination]['L']
+		return self.L_ew + self.L_co
 	@property
 	def Lq(self):
 		return self.L / (1+self.salience_ratio)
@@ -307,4 +302,3 @@ class Magnetic(Scaled, Base):
 
 	def demagnetiztion_factor(self, Iq, Id):
 		pass
-

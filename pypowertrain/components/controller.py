@@ -10,11 +10,11 @@ class Controller(Base):
 	Note: would be neat to add IM motor control support here
 	"""
 	commutation = {
-		'sine': 0.75,
-		# cos(30^2; double inscribed circle; once to get neutral zero polygon, second to get rotational symmetry
-		'svpwm': np.sqrt(3) / 2,  # cos(30); inscribed circle in hexagon
-		'thi': np.sqrt(3) / 2,  # cos(30)	# third harmonic
-		'trapezoidal': np.sqrt(3) / 2,  # cos(30)	# works out like this?
+		'sine': 0.75,  # cos(30)^2; double inscribed circle; once to get neutral zero polygon, second to get rotational symmetry
+		'svpwm': np.sqrt(3) / 2,  # cos(30); inscribed circle in hexagon, accepting zero point shift
+		'thi': np.sqrt(3) / 2,  # cos(30)	# third harmonic injection
+		'trapezoidal': np.sqrt(3) / 2,  # works out to same cos(30) effective magnitude?
+		'sixstep180': 0.9549	# overmodulation, using the full hexagon, accepting ripple current
 	}
 
 	phase_current_limit: float
@@ -61,5 +61,5 @@ def define_ideal_controller():
 		internal_resistance=0,
 		ripple_freq=1e6,
 		freq_limit=1e6,
-		modulation_factor=1/np.sqrt(3),
+		modulation_factor=Controller.commutation['sixstep180'],
 	)

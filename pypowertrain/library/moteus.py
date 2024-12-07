@@ -65,8 +65,7 @@ def mj5208():
 
 		gap_diameter=54e-3,
 		gap_length=8e-3,
-		magnet_height=3e-3,
-		# slot_depth=6e-3,	# visual approximate
+		magnet_height=2e-3,
 	)
 
 	electrical = Electrical.from_absolute(
@@ -75,7 +74,7 @@ def mj5208():
 		R_ll=50e-3,
 		L_ll=30e-6,
 		# d0=0.03, d1=0.00003,	# FIXME: tune iron losses? or are defaults fine?
-		saturation_nm=1.7,	# this is a practical saturation limit; a value somewhat beyond the linear region
+		saturation_nm=0.7,	# as measured by jpieper
 	)
 
 	# FIXME: make drone motor specific weight model?

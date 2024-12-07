@@ -111,10 +111,10 @@ class ShelledConductivity(Conductivity):
 			# statorade=False, vented=False, potted=False, painted=0.4, tire=False, block=0.25,
 			statorade = 1.0,
 			side_exposure = 1.0,		# weighting factor; how much of the motor is exposed to free stream velocity
-			rim_exposure = 1.0,
-			vented = 0.0,
+			rim_exposure = 1.0,			# 0 for a motor with a tire on it
+			vented = 0.0,				# mixing of interior and exterior air
 			potted = 1.0,
-			emissivity = 1.0,
+			emissivity = 1.0,			#
 	):
 		"""Set from dimensionless attributes, so that it scales with motor design"""
 		gap_radiation = radiative_k(80, 40)

@@ -30,9 +30,11 @@ def test_moteus_n1():
 
 def test_saturation():
 	system = fixture()
+	# print(system.actuator.motor.electrical.attrs['saturation'])
+	# return
 	import matplotlib.pyplot as plt
 
-	Iq = np.linspace(0, 200, 100)
+	Iq = np.linspace(0, 100, 100)
 	S = system.actuator.motor.electrical.saturation
 	T = Iq * system.actuator.motor.electrical.Kt / system.actuator.motor.electrical.saturation_factor(Iq)
 	plt.plot(Iq, T)
