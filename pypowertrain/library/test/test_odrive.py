@@ -41,7 +41,20 @@ def test_M8325s_100KV():
 				freq_limit=2000
 			),
 		),
-		battery=define_battery(v=58, wh=1000),
+		battery=define_battery(v=14, wh=1000),
+	)
+	system_plot(system)
+
+
+def test_M5312s_330KV():
+	system = System(
+		actuator=Actuator(
+			motor=odrive.M5312s_330KV(),
+			controller=odrive.pro().replace(
+				freq_limit=2000
+			),
+		),
+		battery=define_battery(v=56, wh=1000),
 	)
 	system_plot(system)
 
@@ -54,7 +67,7 @@ def test_botwheel():
 	system = System(
 		actuator=Actuator(
 			motor=odrive.botwheel().replace(
-				turns=5
+				# turns=5
 			),
 			controller=odrive.pro().replace(
 				field_weakening=True,
@@ -62,7 +75,6 @@ def test_botwheel():
 		),
 		battery=define_battery(v=48, wh=1e3),
 	)
-	# system.actuator.motor.electrical.attrs['saturation'] =1000
 	system_plot(system, color='power')
 
 

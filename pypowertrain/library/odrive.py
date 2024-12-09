@@ -65,7 +65,9 @@ def micro():
 
 
 def D6374_150KV():
-	"""https://odriverobotics.com/shop/odrive-custom-motor-d6374-150kv"""
+	"""https://odriverobotics.com/shop/odrive-custom-motor-d6374-150kv
+	https://docs.odriverobotics.com/v/latest/hardware/odrive-motors.html
+	"""
 	geometry = Geometry.create(
 		pole_pairs=7,
 		slot_triplets=4,
@@ -79,8 +81,8 @@ def D6374_150KV():
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
 		Kv_ll=150,
-		R_ll=39e-3,	# FIXME: same as 270kv? seems like an error
-		L_ll=24e-6,
+		R_ll=39e-3*2,
+		L_ll=24e-6*2,
 	)
 
 	mass = Mass.from_absolute(geometry=geometry, total=0.89)
@@ -94,7 +96,9 @@ def D6374_150KV():
 
 
 def D5065_270KV():
-	"""https://odriverobotics.com/shop/odrive-custom-motor-d5065"""
+	"""https://odriverobotics.com/shop/odrive-custom-motor-d5065
+	https://docs.odriverobotics.com/v/latest/hardware/odrive-motors.html
+	"""
 	geometry = Geometry.create(
 		pole_pairs=7,
 		slot_triplets=4,
@@ -108,8 +112,8 @@ def D5065_270KV():
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
 		Kv_ll=270,
-		R_ll=39e-3,
-		L_ll=15.7e-6,
+		R_ll=39e-3*2,
+		L_ll=16e-6*2,
 	)
 
 	mass = Mass.from_absolute(geometry=geometry, total=0.42)
@@ -123,7 +127,9 @@ def D5065_270KV():
 
 
 def M8325s_100KV():
-	"""https://odriverobotics.com/shop/m8325s"""
+	"""https://odriverobotics.com/shop/m8325s
+	https://docs.odriverobotics.com/v/latest/hardware/odrive-motors.html
+	"""
 	geometry = Geometry.create(
 		pole_pairs=20,
 		slot_triplets=12,
@@ -136,13 +142,51 @@ def M8325s_100KV():
 
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
-		Kv_ll=100,			# FIXME: data entry problem? we struggle to match realistic values here in test_compare
-		R_ll=24e-3,
-		L_ll=9.97e-6,
+		Kv_ll=100,
+		R_ll=24e-3*2,
+		L_ll=9.9e-6*2,
 		# termination='delta',
 	)
+	# electrical = Electrical.from_absolute(
+	# 	geometry=geometry,
+	# 	Kv_ll=460/14,
+	# 	R_ll=2.732*2,
+	# 	L_ll=762e-6*2,
+	# )
+
 
 	mass = Mass.from_absolute(geometry=geometry, total=0.840)
+
+	thermal = basic_thermal(mass, K0=0.66)
+	return Motor(
+		electrical=electrical,
+		thermal=thermal,
+		mass=mass,
+	)
+
+
+def M5312s_330KV():
+	"""https://odriverobotics.com/shop/m8325s
+	https://docs.odriverobotics.com/v/latest/hardware/odrive-motors.html
+	"""
+	geometry = Geometry.create(
+		pole_pairs=7,
+		slot_triplets=5,
+		turns=5,			# FIXME: unknown!
+
+		gap_diameter=50e-3,	# rough estimates
+		gap_length=20e-3,
+		slot_depth=7e-3,
+	)
+
+	electrical = Electrical.from_absolute(
+		geometry=geometry,
+		Kv_ll=330,
+		R_ll=37e-3*2,
+		L_ll=23e-6*2,
+	)
+
+	mass = Mass.from_absolute(geometry=geometry, total=0.230)
 
 	thermal = basic_thermal(mass, K0=0.66)
 	return Motor(
@@ -171,8 +215,8 @@ def botwheel():
 		geometry=geometry,
 		Kv_ll=8.7,
 		# Kt=0.951,
-		R_ll=0.8,
-		L_ll=1.7e-3,
+		R_ll=0.8*2,	# FIXME: dont have the source of these numbers; dont know their reference frame!
+		L_ll=1.7e-3*2,
 	)
 
 	mass = Mass.from_absolute(geometry=geometry, total=2.2-0.2)	# subtract rubber wheel?

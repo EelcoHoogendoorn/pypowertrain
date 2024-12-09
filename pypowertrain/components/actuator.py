@@ -63,6 +63,10 @@ class Actuator(Base):
 	def temperatures(self, mps, rpm, copper_loss, iron_loss, dt, key='coils'):
 		"""build motor temp graphs from heat source/sink graphs"""
 		circumferential = rpm / 60 * self.motor.geometry.gap_circumference
+
+		# special zero speed index; rather than 1/3 cooper loss per phase, 2/3 copper loss in one phase
+		# how to model? not clear just capacity tweak will do; really ought to model phases seperately
+		# idx = np.argmin(np.abs(rpm))
 		def process_speed(i):
 			thermal = self.motor.thermal.replace(
 				conductivity__linear=np.abs(mps[i]),

@@ -190,7 +190,7 @@ def system_limits(
 	# build up boolean validity mask terms valid over all rpm
 	smask = 1
 	# controller phase current limit
-	smask = np.logical_and(smask, Is < actuator.controller.phase_current_limit ** 2)
+	smask = np.logical_and(smask, I_squared < actuator.controller.phase_current_limit ** 2)
 	# demagnetization limit
 	smask = np.logical_and(smask, motor.demagnetiztion_factor(Iq, Id) < 1)
 
@@ -222,8 +222,8 @@ def system_limits(
 		#  effect seems quite minimal in practice; like 3% kph continuous rating. not nothing tho
 		drag_torque = np.sign(omega_axle_hz) * motor.iron_drag(omega_axle_hz) #* (1+Id/300)**2
 		# NOTE: both I and R are already in the q-d frame; dont need another constant like 3/2 here.
-		copper_loss = Is * R_dq	# this 'just works' given our chosen coordinate frame
-		iron_loss = omega_axle_rad * drag_torque + omega_elec_rad**2*Is*0 # keep this rotor-eddy term in here for broadcasting
+		copper_loss = I_squared * R_dq	# this 'just works' given our chosen coordinate frame
+		iron_loss = omega_axle_rad * drag_torque + omega_elec_rad**2*I_squared*0 # keep this rotor-eddy term in here for broadcasting
 		dissipation = copper_loss + iron_loss
 		mechanical_torque = em_torque - drag_torque
 		mechanical_power = mechanical_torque * omega_axle_rad
