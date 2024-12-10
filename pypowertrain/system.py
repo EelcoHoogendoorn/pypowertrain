@@ -139,15 +139,27 @@ def system_limits(
 	#  nope.. kinda fails for voltage limit already. its 1 in entire FW region. dropping volt limit will produce large jumps
 	#  seems like both sides of the FW region would require special treatment already.
 
+	def masking(minimizer, mask):
+		# now, we pick the optimal operating conditions, of those left in the mask
+		# of all valid options for a given torque, we pick the one most favorable
+		ma = np.ma.array(minimizer, mask=1 - mask)
+		mask = np.ma.min(ma, axis=1).mask
+		idx = np.ma.argmin(ma, axis=1)
+		i = np.arange(len(idx))
+		masker = lambda o : np.ma.array(o[i, idx], mask=mask).filled(np.nan)
+		return i, idx, masker
+
 	actuator = system.actuator
 	battery = system.battery
 	motor = actuator.motor
 	controller = actuator.controller
 
 	if controller.field_weakening:
-		# FIXME: are we at all interested in positive Id? prob not, saturation limits sensible Id
+		# FIXME: are we at all interested in positive Id? prob not, PM saturation limits sensible Id
 		arange = np.linspace(-actuator.phase_current_limit, +actuator.phase_current_limit*0.0, gridsize+1)
 	else:
+		# FIXME: can we easily simulate what a non-FOC controller would do in practice?
+		#  does it simply compute an out of bound voltage vector, and then clip it?
 		arange = np.array([0.])	# always pursue Id=0; any nonzero Id implicitly considered an invalid state
 
 	# map output ranges to motor ranges
@@ -181,7 +193,8 @@ def system_limits(
 	# FIXME: move into electrical class? R_dq depends on controller tho
 	Vq_bal = lambda omega: Iq * R_dq + omega * L_d * Id + omega * Ke_dq
 	Vd_bal = lambda omega: Id * R_dq - omega * L_q * Iq
-	Vlim2 = lambda omega: Vq_bal(omega) ** 2 + Vd_bal(omega) ** 2
+	# magnitude of voltage vector required in dq frame to reach a given current state
+	V_dq = lambda omega: np.sqrt(Vq_bal(omega) ** 2 + Vd_bal(omega) ** 2)
 
 	# these are rewritings of the above; solving Id for a given Iq at voltage equilibrium
 	Id_bal = lambda omega: omega * L_q * Iq / R_dq
@@ -194,23 +207,6 @@ def system_limits(
 	# demagnetization limit
 	smask = np.logical_and(smask, motor.demagnetiztion_factor(Iq, Id) < 1)
 
-	# FIXME: crop mask grid to valid states for efficiency reasons?
-	# plt.figure()
-	# plt.imshow(smask)
-	# plt.show()
-
-	# mask_names = [
-	# 	'Controller current',
-	# 	'Controller frequency',
-	# 	'Controller power',
-	# 	'Demagnetization',
-	# 	'Voltage',
-	# 	'Battery discharge',
-	# 	'Battery charge',
-	# ]
-	# masks = np.array(shape=(Iq.shape + len(mask_names),), dtype=np.float32)
-	# def write_mask(name, data):
-	# 	masks[mask_names.index(name)] = data
 
 	def process_frequency(omega_axle_hz):
 		"""construct and intersect all operating point limits and solve for remaining optimum, for given frequency"""
@@ -237,7 +233,7 @@ def system_limits(
 		# excessive bus voltage is clipped to controller voltage rather than making it explode
 		voltage_effective = np.minimum(effective_bus_voltage, controller.bus_voltage_limit) * actuator.n_series  # FIXME: conservative; pass in from battery?
 		# how much of a voltage vector wed want versus how much DC voltage we have to work with
-		v_ratio = np.sqrt(Vlim2(omega_elec_rad)) / voltage_effective
+		v_ratio = V_dq(omega_elec_rad) / voltage_effective
 
 		# calculate ripple losses
 		# https://www.portescap.com/en/newsroom/whitepapers/2021/10/understanding-the-effect-of-pwm-when-controlling-a-brushless-dc-motor
@@ -253,6 +249,10 @@ def system_limits(
 		dissipation += ripple_loss
 		bus_power += ripple_loss
 
+		# map to output torque
+		_, mechanical_torque = actuator.gearing.forward(0, mechanical_torque)
+
+
 		# apply controller frequency limit
 		mask = np.logical_and(smask, np.abs(omega_elec_hz) < controller.freq_limit)
 		# apply voltage limit
@@ -265,29 +265,29 @@ def system_limits(
 		# when switching large current zero bus regen braking
 		mask = np.logical_and(mask, np.abs(bus_power) < actuator.power_limit)
 
-		# now, we pick the optimal operating conditions, of those left in the mask
-		# of all valid Id options for a given torque, we pick the one most energetically favorable
-		ma = np.ma.array(bus_power, mask=1-mask)
-		mask = np.ma.min(ma, axis=1).mask 		# this is a reduction over the Id axis
-		idx = np.ma.argmin(ma, axis=1)			# this is a reduction over the Id axis
-		i = np.arange(len(trange))
-
-		# map to output torque
-		_, mechanical_torque = actuator.gearing.forward(0, mechanical_torque)
+		# construct masking function
+		i, j, masker = masking(minimizer=bus_power, mask=mask)
 
 		return [
-			np.ma.array(o[i, idx], mask=mask).filled(np.nan)
+			masker(o)
 			for o in [copper_loss, ripple_loss, iron_loss, bus_power, mechanical_power, Iq, Id, Vq_bal_2(omega_elec_rad), mechanical_torque]
 		] + [
 			# these two measure distance to cone and distance from Iq=0
 			# FIXME: clean this up to be more readable
 			#  generalize into mechanism for returning all limit plots?
-			v_ratio[i, idx], v_ratio[i, np.argmin(np.abs(arange))]-controller.modulation_factor
+			v_ratio[i, j],
+			v_ratio[i, np.argmin(np.abs(arange))]-controller.modulation_factor
 		]
 	# good old for loop rather than vectorize over rpm; memory use might explode otherwise
-	outputs = np.array([process_frequency(o) for o in rpm/60])
+	outputs = [process_frequency(o) for o in rpm/60]
 	# change to [n_graphs, torque, rpm]
-	return np.moveaxis(outputs, [1, 2, 0], [0, 1, 2])
+	names = (
+		'copper_loss',
+		'ripple_loss',
+		'iron_loss',
+		'bus_power',
+		'mechanical_power', 'Iq', 'Id', 'Vq_bal', 'mechanical_torque', 'v_ratio', 'v_ratio_2')
+	return dict(zip(names, np.moveaxis(outputs, [1, 2, 0], [0, 1, 2]).astype(np.float32)))
 
 
 
@@ -304,8 +304,8 @@ def system_detect_limits(system, fw=1.5, frac=0.98, padding=1.2):
 	max_rpm = system.actuator.motor.electrical.Kv * system.battery.voltage * fw * system.actuator.n_series
 	trange = np.linspace(-max_torque, +max_torque, 64, endpoint=True)
 	rpm = np.linspace(0, max_rpm, 64, endpoint=False)
-	results = system_limits(system, trange, rpm)
-	torque = results[-3]
+	graphs = system_limits(system, trange, rpm)
+	torque = graphs['mechanical_torque']
 	max_torque = np.max(np.abs(np.nan_to_num(torque)))
 	max_rpm = rpm[::-1][np.argmin(np.mean(np.isnan(torque), axis=0)[::-1] > frac)]
 	max_rpm = system.x_axis_inverse(round(system.x_axis_forward(max_rpm) * padding, 2))
@@ -339,7 +339,17 @@ def system_plot(
 	torque_range = np.linspace(-max_torque*torque_negative, +max_torque, n_torque + 1, endpoint=True)
 
 	# eval the system performance graphs
-	copper_loss, ripple_loss, iron_loss, bus_power, mechanical_power, Iq, Id, vbal, torque, v_margin, v_margin2 = system_limits(system, torque_range, rpm_range)
+	graphs = system_limits(system, torque_range, rpm_range)
+
+	copper_loss = graphs['copper_loss']
+	iron_loss = graphs['iron_loss']
+	bus_power = graphs['bus_power']
+	mechanical_power = graphs['mechanical_power']
+	Iq = graphs['Iq']
+	Id = graphs['Id']
+	vbal = graphs['Vq_bal']
+	torque = graphs['mechanical_torque']
+
 	dissipation = copper_loss + iron_loss
 	efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
 

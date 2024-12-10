@@ -34,11 +34,17 @@ def calc_stuff(system, x_range, y_range, thermal_specs):
 	# eval the system performance graphs
 	rpm_range = system.x_axis_inverse(x_range)
 	torque_range = system.y_axis_inverse(y_range)
-	graphs = system_limits(system, torque_range, rpm_range).astype(np.float32)
-	copper_loss, ripple_loss, iron_loss, bus_power, mechanical_power, Iq, Id, vbal, torque, v_margin, v_margin2 = graphs
+	graphs = system_limits(system, torque_range, rpm_range)
+
+	copper_loss = graphs['copper_loss']
+	iron_loss = graphs['iron_loss']
+	bus_power = graphs['bus_power']
+	mechanical_power = graphs['mechanical_power']
+	Iq = graphs['Iq']
+	vbal = graphs['Vq_bal']
+	torque = graphs['mechanical_torque']
 
 	dissipation = copper_loss + iron_loss
-	# efficiency = 1 - dissipation / np.abs(bus_power)
 	efficiency = 1 - dissipation / np.maximum(np.abs(mechanical_power), np.abs(bus_power))
 	acceleration = system.acceleration(x_range, torque)
 
@@ -58,7 +64,7 @@ def calc_stuff(system, x_range, y_range, thermal_specs):
 	# import skimage.filters
 	# fw_lim = skimage.filters.gaussian(q, [3, 1]) + Id * 0
 	# fw_lim_contour = get_cont(fw_lim + 3)
-	fw_lim_contour = get_cont(v_margin2)
+	fw_lim_contour = get_cont(graphs['v_ratio_2'])
 
 	efficiency_contour = get_cont(efficiency - 0.9)
 
@@ -216,6 +222,10 @@ def system_dash(
 		dbc.Tooltip(frequency_tooltip, target='frequency-slider'),
 		html.Label('Termination'),
 		dcc.Dropdown(termination_options, system.actuator.motor.electrical.geometry.termination, id='termination-selection'),
+		html.Label('Coil temperature'),
+		dcc.Slider(-20, 150, 10, value=system.actuator.motor.coil_temperature, id='coil-temperature-slider'),
+		html.Label('Magnet temperature'),
+		dcc.Slider(-20, 150, 10, value=system.actuator.motor.magnet_temperature, id='magnet-temperature-slider'),
 
 	])
 	battery_tab = dbc.Tab(label='Battery', children=[
@@ -322,11 +332,14 @@ def system_dash(
 			]),
 		),
 
-		# dcc.Store(id='coarsedata'),		# FIXME: split this more granular? sep arrays? coarse and fine?
-		dcc.Store(id='load'),		# also split other subcomponents into substore.
+		dcc.Store(id='load'),
 		dcc.Store(id='thermal'),
 		dcc.Store(id='controller_og'),
 		dcc.Store(id='controller'),
+		dcc.Store(id='motor_og'),
+		dcc.Store(id='motor'),
+		dcc.Store(id='battery_og'),
+		dcc.Store(id='battery'),
 		dcc.Store(id='system'),
 		dcc.Store(id='ranges'),
 		dcc.Store(id='graphdata'),
@@ -409,10 +422,39 @@ def system_dash(
 		)
 		return pickle_encode(controller)
 
+
 	@callback(
-		Output('system', 'data'),
+		Output('motor_og', 'data'),
+		Output('turns-slider', 'value'),
+		Output('radius-slider', 'value'),
+		Output('slot-depth-slider', 'value'),
+		Output('axial-slider', 'value'),
+		Output('slot-width-slider', 'value'),
+		Output('reluctance-slider', 'value'),
+		Output('frequency-slider', 'value'),
+		Output('termination-selection', 'value'),
+		Output('coil-temperature-slider', 'value'),
+		Output('magnet-temperature-slider', 'value'),
 
 		Input('dropdown-motor', 'value'),
+	)
+	def compute_handler_motor(
+		motor,
+	):
+		motor = motors.get(motor, system.actuator.motor)
+		ui = (
+			motor.electrical.geometry.turns,
+			1.0, 1.0, 1.0, 1.0, 1.0, 1.0,	# reset scalings to unity
+			motor.electrical.geometry.termination,
+			motor.coil_temperature,
+			motor.magnet_temperature,
+		)
+		return (pickle_encode(motor),) + ui
+
+	@callback(
+		Output('motor', 'data'),
+
+		Input('motor_og', 'data'),
 		Input('turns-slider', 'value'),
 		Input('radius-slider', 'value'),
 		Input('slot-depth-slider', 'value'),
@@ -421,64 +463,103 @@ def system_dash(
 		Input('reluctance-slider', 'value'),
 		Input('frequency-slider', 'value'),
 		Input('termination-selection', 'value'),
-
-		Input('charge-slider', 'value'),
-		Input('P-slider', 'value'),
-		Input('S-slider', 'value'),
-
-		Input('controller', 'data'),
-		Input('n_series-slider', 'value'),
-
-		Input('load', 'data'),
-		Input('thermal', 'data'),
+		Input('coil-temperature-slider', 'value'),
+		Input('magnet-temperature-slider', 'value'),
 	)
-	def compute_handler_system(
-			motor, turns, radius, slot_depth, length, slot_width, reluctance, frequency, termination,
-			charge, P, S,
-			controller, n_series,
-			load,
-			thermal,
+	def compute_handler_motor_adjust(
+			motor,
+			turns,
+			radius,
+			slot_depth,
+			axial,
+			slot_width,
+			reluctance,
+			frequency,
+			termination, coil_temperature, magnet_temperature,
 	):
-		"""Put all modifiers to the system object here"""
-		# FIXME: place base object selection upstream?
-		sysr = system
-		if motor:
-			sysr = sysr.replace(__motor=motors[motor])
-
-		controller = pickle_decode(controller)
-		sysr = sysr.replace(
-			load=pickle_decode(load),
-			__thermal=pickle_decode(thermal)
-		).replace(
+		motor = pickle_decode(motor)
+		motor = motor.replace(
 			__geometry__turns=turns,
 			__geometry__radius_scale=radius,
 			__geometry__slot_depth_scale=slot_depth,
-			__geometry__length_scale=length,
+			__geometry__length_scale=axial,
 			__geometry__slot_width_scale=slot_width,
 			__geometry__reluctance_scale=reluctance,
 			__geometry__frequency_scale=frequency,
 			__geometry__termination=termination,
+			coil_temperature=coil_temperature,
+			magnet_temperature=magnet_temperature,
+		)
+		return pickle_encode(motor)
 
-			battery__charge_state=charge,
-			battery__P=P,
-			battery__S=S,
 
-			__controller=controller,
+	@callback(
+		Output('battery', 'data'),
+
+		# Input('battery_og', 'data'),
+		Input('charge-slider', 'value'),
+		Input('P-slider', 'value'),
+		Input('S-slider', 'value'),
+	)
+	def compute_handler_battery_adjust(
+			charge, P, S,
+	):
+		# battery = pickle_decode(battery)
+
+		battery = system.battery
+		battery = battery.replace(
+			charge_state=charge,
+			P=P,
+			S=S,
+		)
+		return pickle_encode(battery)
+
+	@callback(
+		Output('system', 'data'),
+
+		Input('controller', 'data'),
+		Input('n_series-slider', 'value'),
+		Input('motor', 'data'),
+		Input('battery', 'data'),
+
+		Input('load', 'data'),
+		Input('thermal', 'data'),
+
+	)
+	def compute_handler_system(
+			controller, n_series,
+			motor,
+			battery,
+			load,
+			thermal,
+	):
+		motor = pickle_decode(motor)
+		controller = pickle_decode(controller)
+		battery = pickle_decode(battery)
+		load = pickle_decode(load)
+		thermal = pickle_decode(thermal)
+		sysr = system.replace(
 			actuator__n_series=n_series,
+			__controller=controller,
+			__motor=motor,
+			__thermal=thermal,
+			load=load,
+			battery=battery
 		)
 		return pickle_encode(sysr)
 
 	@callback(
 		Output('motor-props-label', 'children'),
-		Input('system', 'data'),
+		Input('motor', 'data'),
 	)
-	def compute_handler_actuator_props(system):
-		system = pickle_decode(system)
+	def compute_handler_motor_props(motor):
+		motor = pickle_decode(motor)
 		return \
-			f'Mass:\t {system.actuator.motor.mass.total:0.3f} \tkg\n' \
-			f'Kt:\t\t {system.actuator.motor.electrical.Kt:0.3f} \tNm/A\n' \
-			f'R: \t\t {system.actuator.motor.electrical.R:0.3f} \tohm\n' \
-			f'L: \t\t {system.actuator.motor.electrical.L*1000:0.3f} \tmH'
+			f'Mass:\t {motor.mass.total:0.3f} \tkg\n' \
+			f'Kt:\t\t {motor.Kt:0.3f} \tNm/A\n' \
+			f'R: \t\t {motor.resistance:0.3f} \tohm\n' \
+			f'L: \t\t {motor.electrical.L*1000:0.3f} \tmH'
+
 
 	@callback(
 		Output('battery-props-label', 'children'),
@@ -505,7 +586,7 @@ def system_dash(
 		Input('system', 'data'),
 		Input('rescale', 'value'),
 	)
-	def compute_handler_rescale(system, rescale):
+	def compute_handler_limits(system, rescale):
 		"""update range estimates"""
 		if rescale:
 			system = pickle_decode(system)

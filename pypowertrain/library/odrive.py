@@ -5,6 +5,7 @@ from pypowertrain.components.motor import *
 
 
 def pro():
+	"""https://docs.odriverobotics.com/v/latest/hardware/pro-datasheet.html#id1"""
 	return Controller(
 		phase_current_limit=120,
 		power_limit=5000,
@@ -28,7 +29,7 @@ def pro_overclock():
 	return pro().replace(
 		power_limit=7000,
 		bus_voltage_limit=58,
-		phase_current_limit=150,
+		phase_current_limit=120,	# 3s limit according to docs; 150A also mentioned informally
 		freq_limit=2000,	# upcoming firmware
 	)
 
