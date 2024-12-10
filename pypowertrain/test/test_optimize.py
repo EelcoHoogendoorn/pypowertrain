@@ -75,11 +75,12 @@ def test_optimize_botwheel():
 	)
 
 	bounds = {
-		'__geometry__turns_scale': (0.2, 1),
+		# '__geometry__turns': (1, 12),
+		'__geometry__turns_scale': (0.2, 1.0),
 	}
 
-	target_torque = [-30, +30]
-	target_rpm = [600] * 2
+	target_torque = [-40, +40]
+	target_rpm = [200] * 2
 	target_dissipation = [10000] * 2
 	target_weight = [(1, 1)] * 2
 
@@ -100,6 +101,7 @@ def test_optimize_botwheel():
 	print(optimized)
 	print(optimized.actuator.motor.geometry.turns)
 
+	system_plot(system, targets=targets)
 	system = optimized.replace(battery__charge_state=0.1)
 	system_plot(system, targets=targets)
 

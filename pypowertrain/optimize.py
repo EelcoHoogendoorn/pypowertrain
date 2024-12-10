@@ -14,9 +14,10 @@ def system_score(
 	# setup calculation grids
 	torque_range = system.actuator.peak_torque * 1.1
 	trange = np.linspace(-torque_range, +torque_range, gridsize+1, endpoint=True)
-	outputs = system_limits(system, trange, t_rpm, gridsize=100)
-	copper, ripple, iron, bus_power, mechanical_power, Iq, Id, vlim, torque, v_margin, v_margin2 = outputs
-	dissipation = copper + iron
+	graphs = system_limits(system, trange, t_rpm, gridsize=100)
+
+	dissipation = graphs['copper_loss'] + graphs['iron_loss']
+	torque = graphs['mechanical_torque']
 
 	# sample closest realizable torque at given kph
 	# i, j = sample_graph(torque, t_torque)

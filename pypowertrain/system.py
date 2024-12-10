@@ -286,7 +286,13 @@ def system_limits(
 		'ripple_loss',
 		'iron_loss',
 		'bus_power',
-		'mechanical_power', 'Iq', 'Id', 'Vq_bal', 'mechanical_torque', 'v_ratio', 'v_ratio_2')
+		'mechanical_power',
+		'Iq',
+		'Id',
+		'Vq_bal',
+		'mechanical_torque',
+		'v_ratio',
+		'v_ratio_2')
 	return dict(zip(names, np.moveaxis(outputs, [1, 2, 0], [0, 1, 2]).astype(np.float32)))
 
 
