@@ -330,6 +330,7 @@ def system_plot(
 	annotations='tdeos',
 	rpm_negative=False,
 	torque_negative=True,
+	output='show',
 ):
 	"""mpl plots of system limits and properties"""
 	import matplotlib.pyplot as plt
@@ -440,7 +441,7 @@ def system_plot(
 		plt.ylabel(y_label)
 		plt.yticks(y_range[::len(y_range)//10])
 
-	plt.figure()
+	fig = plt.figure()
 	if color == 'efficiency':
 		imshow(efficiency, cmap='nipy_spectral', clim=(0, 1))
 		plt.title('Efficiency')
@@ -469,7 +470,13 @@ def system_plot(
 		plt.title('Acceleration')
 
 	default_annotate()
-	plt.show()
+	if output == 'show':
+		plt.show()
+	elif output == 'return':
+		return fig
+	else:
+		plt.savefig(output)
+		plt.close(fig)
 
 
 def sample_graph(graph, sample_point):

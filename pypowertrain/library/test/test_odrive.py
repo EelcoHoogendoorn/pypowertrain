@@ -83,7 +83,7 @@ def test_botwheel_anim():
 	system = System(
 		actuator=Actuator(
 			motor=odrive.botwheel(),
-			controller=odrive.micro().replace(
+			controller=odrive.pro().replace(
 				field_weakening=True,
 			),
 		),
@@ -92,13 +92,9 @@ def test_botwheel_anim():
 		),
 	)
 
-	import matplotlib.pyplot as plt
 	for i in range(2, 12):
 		system = system.replace(__turns=i)
-		system_plot(system, max_rpm=1000, max_torque=33)
-		plt.savefig(f'rewind{i}.png')
-		plt.close()
-
+		system_plot(system, max_rpm=1000, max_torque=35, output=f'rewind{i}.png')
 
 
 def test_botwheel_thermal_resistance():

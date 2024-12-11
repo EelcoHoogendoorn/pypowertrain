@@ -35,9 +35,9 @@ def pro_overclock():
 
 
 def s1():
-	# FIXME: modulation factor 0.7 lower than the pro?
+	"""https://docs.odriverobotics.com/v/latest/hardware/s1-datasheet.html"""
 	return Controller(
-		phase_current_limit=80,
+		phase_current_limit=80,	# this is transient peak; also bus voltage dependent, currently ignored!
 		power_limit=2000,		# no known data?
 		bus_voltage_limit=48,
 		internal_resistance=3e-3,
@@ -46,11 +46,12 @@ def s1():
 		width=50e-3,
 		length=66e-3,
 		weight=35e-3,
-		modulation_factor=0.7 * Controller.commutation['svpwm'],
+		modulation_factor=0.78 * Controller.commutation['svpwm'],
 	)
 
 
 def micro():
+	"""https://docs.odriverobotics.com/v/latest/hardware/micro-datasheet.html"""
 	return Controller(
 		phase_current_limit=7,
 		power_limit=180,
@@ -215,12 +216,12 @@ def botwheel():
 	electrical = Electrical.from_absolute(
 		geometry=geometry,
 		Kv_ll=8.7,
-		# Kt=0.951,
-		R_ll=0.8*2,	# FIXME: dont have the source of these numbers; dont know their reference frame!
+		# NOTE: as provided on odrive discord
+		R_ll=0.8*2,
 		L_ll=1.7e-3*2,
 	)
 
-	mass = Mass.from_absolute(geometry=geometry, total=2.2-0.2)	# subtract rubber wheel?
+	mass = Mass.from_absolute(geometry=geometry, total=2.2-0.2)	# subtract rubber wheel estimate
 
 	thermal = shelled_thermal(mass, rim_exposure=0.0)
 	return Motor(
