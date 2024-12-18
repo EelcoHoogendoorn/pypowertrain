@@ -30,6 +30,7 @@ class Cell(Base):
 
 @dataclass
 class Battery(Base):
+	# FIXME: make battery a subclass of cell; or share an interface, so they are arbitrarily nestable.
 	cell: Cell
 	S: int
 	P: int
@@ -52,7 +53,7 @@ class Battery(Base):
 	def Ah(self): # in Ah
 		return self.P * self.cell.capacity
 	@property
-	def capacity(self): # in kwh
+	def capacity(self): # in wh
 		return self.S * self.P * self.cell.capacity * self.cell.nominal_voltage
 
 	@property
@@ -81,7 +82,6 @@ samsung_21700 = Cell(
 	maximum_voltage=4.2,
 	nominal_voltage=3.6,
 	minimum_voltage=3.0,	# more old fashioned safer value; gives 30% discharge kinda typical
-	# minimum_voltage=2.5,
 	resistance=7e-3,    # 15A ~ 0.1V drop
 	capacity=4.9,       # Ah
 	peak_discharge=8,	# in units of C
@@ -89,6 +89,16 @@ samsung_21700 = Cell(
 	mass=70e-3,			# in kg
 )
 
+JGNE_lifepo4_26650 = Cell(
+	maximum_voltage=3.65,
+	nominal_voltage=3.2,
+	minimum_voltage=2.5,
+	resistance=20e-3,
+	capacity=4.0,  # Ah
+	peak_discharge=3,  # in units of ; this is peak continuous; 5s pulse about double?
+	peak_charge=3,
+	mass=88e-3,  # in kg
+)
 
 def define_battery_58v(P=4):
 	return Battery(
