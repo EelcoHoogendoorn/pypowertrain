@@ -190,6 +190,9 @@ class ShelledConductivity(Conductivity):
 		scalings['inner_air_v']['side_exposure'] = 1
 		scalings['rotor_air_v']['side_exposure'] = 1
 		scalings['shell_air_v']['side_exposure'] = 1
+		# FIXME: if we do full insulation of shell rather than just flow blocking, enable this
+		# scalings['shell_air']['side_exposure'] = 1
+		# scalings['shell_air_r']['side_exposure'] = 1
 
 		return ShelledConductivity.init(
 			geometry=geometry, context=['geometry'], scaling=scalings,

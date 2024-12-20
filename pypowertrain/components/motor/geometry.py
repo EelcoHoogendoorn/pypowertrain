@@ -51,6 +51,8 @@ class Geometry(Base):
 		gap_radius=None, gap_diameter=None,
 		gap_length=None, aspect_ratio=None,
 		slot_depth=None, slot_depth_fraction=None,
+			# FIXME: proper default here is rather debatable.
+			#  magnet thickness tends to be sub-proportioanl to radius
 		magnet_height=None, magnet_height_fraction=0.03,
 		magnet_width=None, magnet_width_fraction=0.9,
 		airgap=None, airgap_fraction=0.007,
@@ -159,6 +161,9 @@ class Geometry(Base):
 
 	@property
 	def back_iron_thickness(self):
+		# FIXME: this assumes equal field strength around the magnetic circuit,
+		#  but in reality the quasi static field in the back iron can be a lot higher
+		#  should probably make this a configurable field ratio instead
 		return self.tooth_width / 2
 
 	# @property

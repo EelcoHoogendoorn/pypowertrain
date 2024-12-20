@@ -18,8 +18,6 @@ def test_D6374_150KV():
 
 
 def test_D5065_270KV():
-	# FIXME: this combo has a very hugh ripple current
-	#  leads to artificially restricted performance; need to tune model accordingly
 	system = System(
 		actuator=Actuator(
 			motor=odrive.D5065_270KV(),
@@ -28,7 +26,7 @@ def test_D5065_270KV():
 				field_weakening=True,
 			),
 		),
-		battery=define_battery(v=24, wh=1e3),
+		battery=define_battery(v=48, wh=1e3),
 	)
 	system_plot(system, color='dissipation', annotations='tdeos')
 
@@ -56,6 +54,21 @@ def test_M5312s_330KV():
 		),
 		battery=define_battery(v=56, wh=1000),
 	)
+	system_plot(system)
+
+
+def test_micro():
+	"""Construct a potential candidate motor that might be a good fit for the micro"""
+	system = System(
+		actuator=Actuator(
+			motor=odrive.M5312s_330KV().replace(__turns_scale=4, __radius_scale=0.7, __length_scale=0.7),
+			controller=odrive.micro().replace(
+				freq_limit=2000
+			),
+		),
+		battery=define_battery(v=30, wh=100),
+	)
+	print(system.actuator.weight)
 	system_plot(system)
 
 

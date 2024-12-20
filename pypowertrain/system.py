@@ -218,6 +218,7 @@ def system_limits(
 		#  effect seems quite minimal in practice; like 3% kph continuous rating. not nothing tho
 		drag_torque = np.sign(omega_axle_hz) * motor.iron_drag(omega_axle_hz) #* (1+Id/300)**2
 		# NOTE: both I and R are already in the q-d frame; dont need another constant like 3/2 here.
+		# FIXME: split this in motor and controller dissipation?
 		copper_loss = I_squared * R_dq	# this 'just works' given our chosen coordinate frame
 		iron_loss = omega_axle_rad * drag_torque + omega_elec_rad**2*I_squared*0 # keep this rotor-eddy term in here for broadcasting
 		dissipation = copper_loss + iron_loss

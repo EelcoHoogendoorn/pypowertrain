@@ -78,6 +78,7 @@ def D6374_150KV():
 		gap_diameter=83e-3,
 		gap_length=25e-3,
 		slot_depth=7e-3,
+		magnet_height=2e-3,
 	)
 
 	electrical = Electrical.from_absolute(
@@ -109,6 +110,7 @@ def D5065_270KV():
 		gap_diameter=83e-3,
 		gap_length=25e-3,
 		slot_depth=7e-3,
+		magnet_height=2e-3,
 	)
 
 	electrical = Electrical.from_absolute(
@@ -140,6 +142,7 @@ def M8325s_100KV():
 		gap_diameter=83e-3,
 		gap_length=25e-3,
 		slot_depth=7e-3,
+		magnet_height=2e-3,
 	)
 
 	electrical = Electrical.from_absolute(
@@ -168,17 +171,18 @@ def M8325s_100KV():
 
 
 def M5312s_330KV():
-	"""https://odriverobotics.com/shop/m8325s
+	"""https://odriverobotics.com/shop/dual-shaft-motor-d5212s-300kv
 	https://docs.odriverobotics.com/v/latest/hardware/odrive-motors.html
 	"""
 	geometry = Geometry.create(
 		pole_pairs=7,
-		slot_triplets=5,
+		slot_triplets=4,
 		turns=5,			# FIXME: unknown!
 
-		gap_diameter=50e-3,	# rough estimates
-		gap_length=20e-3,
-		slot_depth=7e-3,
+		gap_diameter=53e-3,
+		gap_length=12e-3,
+		slot_depth=7e-3,	# rough estimate
+		magnet_height=1.5e-3, # FIXME: getting a decent estimate of this is quite critical to dimensionless core saturation estimation
 	)
 
 	electrical = Electrical.from_absolute(
@@ -209,7 +213,7 @@ def botwheel():
 		gap_diameter=130e-3,
 		gap_length=54e-3,
 		airgap=0.6e-3,
-		magnet_height=1e-3,
+		magnet_height=2e-3,
 		slot_depth_fraction=0.08,  # weight matched
 	)
 
