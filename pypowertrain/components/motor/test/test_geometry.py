@@ -1,9 +1,9 @@
 from pypowertrain.utils import *
-from pypowertrain.components.motor.geometry import Geometry, winding
+from pypowertrain.components.motor.geometry import Outrunner, Inrunner, winding
 
 
-def test_geometry():
-	geo = Geometry.create(
+def test_outrunner():
+	geo = Outrunner.create(
 		poles=46,
 		slots=42,
 		turns=5,
@@ -28,9 +28,24 @@ def test_geometry():
 	# geo = geo.rescale(frequency_scale=2)
 
 
+def test_inrunner():
+	geo = Inrunner.create(
+		pole_pairs=11,
+		slot_triplets=8,
+		turns=5,
+
+		gap_diameter=199e-3,
+		gap_length=27e-3,
+		slot_depth_fraction=0.16,
+		magnet_height=5e-3,
+		airgap=1.7e-3,
+	)
+	geo.plot()
+
+
 def test_L():
 	"""copy parameters from paper; check that we get Lew=0.01"""
-	geo = Geometry.create(
+	geo = Outrunner.create(
 		poles=4,
 		slots=12,
 		turns=19,

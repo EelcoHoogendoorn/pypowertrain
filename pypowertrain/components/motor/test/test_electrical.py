@@ -1,9 +1,9 @@
 from pypowertrain.utils import *
-from pypowertrain.components.motor.geometry import Geometry
+from pypowertrain.components.motor.geometry import Outrunner
 from pypowertrain.components.motor.electrical import Electrical
 
 def fixture():
-	geo = Geometry.create(
+	geo = Outrunner.create(
 		poles=46,
 		slots=42,
 		turns=5,

@@ -1,7 +1,5 @@
-import numpy as np
 
 from pypowertrain.utils import *
-from pypowertrain.components.motor.geometry import Geometry
 from pypowertrain.components.motor.mass import Mass
 from pypowertrain.components.motor.electrical import Electrical
 from pypowertrain.components.thermal import Thermal

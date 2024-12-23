@@ -113,7 +113,7 @@ class ShelledConductivity(Conductivity):
 			side_exposure = 1.0,		# weighting factor; how much of the motor is exposed to free stream velocity
 			rim_exposure = 1.0,			# 0 for a motor with a tire on it
 			vented = 0.0,				# mixing of interior and exterior air
-			potted = 1.0,
+			potted = 1.0,				# boosts thermal coupling of coils and stator
 			emissivity = 1.0,			#
 	):
 		"""Set from dimensionless attributes, so that it scales with motor design"""

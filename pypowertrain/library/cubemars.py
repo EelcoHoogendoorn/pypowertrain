@@ -1,9 +1,10 @@
 from pypowertrain.components.motor import *
+from pypowertrain.components.motor.geometry import Outrunner, Inrunner
 
 
 def R100():
 	"""https://www.cubemars.com/goods-945-R100.html"""
-	geometry = Geometry.create(
+	geometry = Outrunner.create(
 		pole_pairs=21,
 		slot_triplets=12,		# guessed, not observed
 		turns=3,  # matched from test_compare
@@ -38,7 +39,7 @@ def R100():
 
 def RO100():
 	"""https://www.cubemars.com/goods-1159-RO100.html"""
-	geometry = Geometry.create(
+	geometry = Outrunner.create(
 		pole_pairs=21,
 		slot_triplets=12,
 		turns=5, # matched from dimensionless attributes
@@ -74,17 +75,17 @@ def RO100():
 
 def RI100():
 	"""https://www.cubemars.com/goods-859-RI100.html"""
-	geometry = Geometry.create(
-		inrunner=True,
+	geometry = Inrunner.create(
 		pole_pairs=14,
 		slot_triplets=8,
 		turns=5, # FIXME: unknown
 
 		gap_diameter=57e-3,
 		gap_length=13e-3,
-		slot_depth_fraction=0.3,	# visual approximate
+		slot_depth_fraction=0.65,	# trying to match 104mm outer dia
 
 		magnet_height=2.5e-3,
+		magnet_width_fraction=0.85,
 		airgap=0.8e-3,
 	)
 
@@ -104,5 +105,5 @@ def RI100():
 		mass=mass,
 		# need to jack up this number beyond usual default to not run into demag limits
 		# when trying to match 0 rpm torque spike in documentation
-		H_limit=1000,  # At/mm @ 20C
+		# H_limit=1000,  # At/mm @ 20C
 	)

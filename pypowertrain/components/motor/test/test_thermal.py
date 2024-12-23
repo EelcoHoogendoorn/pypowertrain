@@ -1,13 +1,13 @@
 import numpy as np
 
 from pypowertrain.utils import *
-from pypowertrain.components.motor.geometry import Geometry
+from pypowertrain.components.motor.geometry import Outrunner
 from pypowertrain.components.motor.mass import Mass
 from pypowertrain.components.motor.thermal import *
 
 
 def fixture(**kwargs):
-	geo = Geometry.create(
+	geo = Outrunner.create(
 		poles=46,
 		slots=42,
 		turns=5,

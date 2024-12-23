@@ -11,7 +11,7 @@ def loop_ratios(l, r, t):
 
 @dataclass
 class Geometry(Base):
-	"""BLDC outrunner geometry logic"""
+	"""BLDC geometry logic"""
 	# FIXME: should geometry itself be split into scaled attr dict?
 	#  think its kindof overcomplication
 
@@ -27,8 +27,9 @@ class Geometry(Base):
 	gap_length: float
 
 
-	slot_depth_fraction: float	# fraction of gap radius
-	# FIXME: tooth_width is more descriptive; since its a constant value, and slot may be sloping
+	slot_depth_fraction: float	# fraction of gap radius. note; could be value > 1 for outrunner!
+
+	# FIXME: tooth_width is more descriptive; since its a constant value, and slot is sloping
 	slot_width_fraction: float = 0.5  # tooth iron/copper ratio, near the airgap
 
 	airgap: float = 0.8e-3
@@ -43,8 +44,9 @@ class Geometry(Base):
 
 	termination: str = 'star'	# star or delta
 
-	@staticmethod
+	@classmethod
 	def create(
+		cls,
 		turns=5,
 		slots=None, slot_triplets=None,
 		poles=None, pole_pairs=None,
@@ -72,7 +74,7 @@ class Geometry(Base):
 		slot_depth_fraction = slot_depth_fraction or slot_depth / gap_radius
 		airgap = airgap or gap_radius * airgap_fraction
 
-		return Geometry(
+		return cls(
 			slots=slots, poles=poles,
 			# gap_radius=gap_radius,
 			em_width=em_width,
@@ -166,29 +168,22 @@ class Geometry(Base):
 		#  should probably make this a configurable field ratio instead
 		return self.tooth_width / 2
 
-	# @property
-	# def outer_radius(self):
-	# 	rotor = self.airgap + self.magnet_height + self.back_iron_thickness
-	# 	# sign = -1 if self.inrunner else +1
-	# 	return self.gap_radius + rotor# * sign
-	# @property
-	# def inner_radius(self):
-	# 	stator = self.slot_depth + self.back_iron_thickness
-	# 	# sign = -1 if self.inrunner else +1
-	# 	return self.gap_radius - stator# * sign
 
+	# NOTE: these are inrunner / outrunner specific
 	@property
 	def slot_radius(self):
-		return self.gap_radius - self.slot_depth
-	@property
+		raise NotImplementedError
 	def stator_radius(self):
-		return self.slot_radius - self.back_iron_thickness
+		raise NotImplementedError
 	@property
 	def rotor_radius(self):
-		rotor = self.airgap + self.magnet_height + self.back_iron_thickness
-		return self.gap_radius + rotor
-	outer_radius = rotor_radius
-	inner_radius = stator_radius
+		raise NotImplementedError
+	@property
+	def outer_radius(self):
+		raise NotImplementedError
+	@property
+	def inner_radius(self):
+		raise NotImplementedError
 
 
 	# these are rough geometry-estimated values for various volumes
@@ -322,50 +317,79 @@ class Geometry(Base):
 		if show:
 			plt.show()
 
+	def plot_geometry(self):
+		"""graphical representation of motor proportions
+
+		Returns: List[dict] of mpl.LineCollection compatible inputs
+		"""
+		raise NotImplementedError
+
+
+
+
+# some plotting utils
+def rotate(angles, geo):
+	c, s = np.cos(angles), np.sin(angles)
+	r = np.array([[c, s], [-s, c]])
+	return np.einsum('abr, ...a -> r...b', r, geo)
+
+def square(s, e):
+	g = np.array([s, e])
+	geo = [
+		[g[0, 0], g[0, 1]],
+		[g[0, 0], g[1, 1]],
+		[g[1, 0], g[1, 1]],
+		[g[1, 0], g[0, 1]],
+		[g[0, 0], g[0, 1]]]
+	return np.array(geo)
+
+def coil(s, e, n):
+	g = np.array([s, e])
+	p = np.linspace(g[0, 0], g[1, 0], n+1)
+	b = np.ones(n)
+	geo = [[p[1:], b*g[0, 1]], [p[:-1], b*g[1,1]]]
+	return np.moveaxis(np.array(geo), 2, 0)
+
+# FIXME: base tooth area estimate on this, so graphical and scaling laws match?
+def halftooth(r, tip_width, tooth_width, em_width, tooth_depth, tip_depth):
+	"""construct tooth lines"""
+	ro = r
+	ri = r - tooth_depth - tip_depth	# slot-radius?
+	ao = 0, tip_width / ro
+	outer = rotate(np.linspace(*ao, 3, endpoint=True)[1:], [r, 0])
+	ai = tooth_width / ri, em_width / ro
+	inner = rotate(np.linspace(*ai, 3, endpoint=True), [ri, 0])
+	return list(outer) + [[r - tip_depth, tooth_width]] + list(inner)	# fixme: tip-radius
+
+def circle(r, n=360):
+	a = np.linspace(0, np.pi*2, n+1, endpoint=True)
+	a+=a[1]/2
+	return np.array([np.cos(a), np.sin(a)]).T * r
+
+
+
+# FIXME: make inrunner/outrunner mixin classes? to be combined with toroidal/normal mixins?
+@dataclass
+class Outrunner(Geometry):
+
+	@property
+	def slot_radius(self):
+		return self.gap_radius - self.slot_depth
+	@property
+	def stator_radius(self):
+		return self.slot_radius - self.back_iron_thickness
+	@property
+	def rotor_radius(self):
+		rotor = self.airgap + self.magnet_height + self.back_iron_thickness
+		return self.gap_radius + rotor
+	outer_radius = rotor_radius
+	inner_radius = stator_radius
 
 	def plot_geometry(self):
 		"""graphical representation of motor proportions
 
 		Returns: List[dict] of mpl.LineCollection compatible inputs
 		"""
-
-		def rotate(angles, geo):
-			c, s = np.cos(angles), np.sin(angles)
-			r = np.array([[c, s], [-s, c]])
-			return np.einsum('abr, ...a -> r...b', r, geo)
-
-		def square(s, e):
-			g = np.array([s, e])
-			geo = [
-				[g[0, 0], g[0, 1]],
-				[g[0, 0], g[1, 1]],
-				[g[1, 0], g[1, 1]],
-				[g[1, 0], g[0, 1]],
-				[g[0, 0], g[0, 1]]]
-			return np.array(geo)
-
-		def coil(s, e, n):
-			g = np.array([s, e])
-			p = np.linspace(g[0, 0], g[1, 0], n+1)
-			b = np.ones(n)
-			geo = [[p[1:], b*g[0, 1]], [p[:-1], b*g[1,1]]]
-			return np.moveaxis(np.array(geo), 2, 0)
-
-		# FIXME: base tooth area estimate on this, so graphical and scaling laws match?
-		def halftooth(r, tip_width, tooth_width, em_width, tooth_depth, tip_depth):
-			"""construct tooth lines"""
-			ro = r
-			ri = r - tooth_depth - tip_depth	# slot-radius?
-			ao = 0, tip_width / ro
-			outer = rotate(np.linspace(*ao, 3, endpoint=True)[1:], [r, 0])
-			ai = tooth_width / ri, em_width / ro
-			inner = rotate(np.linspace(*ai, 3, endpoint=True), [ri, 0])
-			return list(outer) + [[r - tip_depth, tooth_width]] + list(inner)	# fixme: tip-radius
-
-		def circle(r, n=360):
-			a = np.linspace(0, np.pi*2, n+1, endpoint=True)
-			a+=a[1]/2
-			return np.array([np.cos(a), np.sin(a)]).T * r
 
 		radius = self.gap_radius
 		pole_pairs = int(self.pole_pairs)
@@ -402,14 +426,13 @@ class Geometry(Base):
 		collections.append({'segments': geo})
 		collections.append({'segments': [circle(radius - tooth_depth - tip_depth - iron_depth)]})
 
+		coil_width = tooth_width + slot_width * geometric_fill_factor
+		gcoil = coil(
+			[radius - tip_depth, coil_width / 2],
+			[radius - tooth_depth - tip_depth, -coil_width / 2],
+			turns
+		)
 		try:
-			a = np.linspace(0, np.pi * 2, slots, endpoint=False)
-			q = tooth_width + slot_width * geometric_fill_factor
-			gcoil = coil(
-				[radius - tip_depth, q / 2],
-				[radius - tooth_depth - tip_depth, -q / 2],
-				turns
-			)
 			colors = [
 				["#FF0000", "#00FF00", "#0000FF"],
 				["#AA0000", "#00AA00", "#0000AA"]
@@ -417,6 +440,7 @@ class Geometry(Base):
 			polarity, phase, wf, balance = winding(poles, slots)
 			colors = np.array(colors)[polarity, phase]
 
+			a = np.linspace(0, np.pi * 2, slots, endpoint=False)
 			geo = np.where(polarity, rotate(a, gcoil).T, rotate(a, gcoil * [1, -1]).T).T
 			geo = np.reshape(geo, (-1, ) + geo.shape[-2:])
 			colors = [str(f) for f in np.repeat(colors, turns)]
@@ -426,12 +450,12 @@ class Geometry(Base):
 		return collections
 
 
-# FIXME: make inrunner/outrunner mixin classes? to be combined with toroidal/normal mixins?
 
 @dataclass
 class Inrunner(Geometry):
 	@property
 	def slot_radius(self):
+		# FIXME: what about tip depth?
 		return self.gap_radius + self.slot_depth
 	@property
 	def stator_radius(self):
@@ -442,6 +466,73 @@ class Inrunner(Geometry):
 		return self.gap_radius - rotor
 	outer_radius = stator_radius
 	inner_radius = rotor_radius
+
+	def plot_geometry(self):
+		"""graphical representation of motor proportions
+
+		Returns: List[dict] of mpl.LineCollection compatible inputs
+		"""
+
+		radius = self.gap_radius
+		pole_pairs = int(self.pole_pairs)
+		poles = pole_pairs * 2
+		slot_triplets = int(self.slots / 3)
+		slots = slot_triplets * 3
+		em_width = self.em_width
+		tip_width = em_width * 0.75
+		tip_depth = radius / 70	# FIXME: make this a legit property?
+
+		tooth_width, slot_width = self.tooth_width, self.slot_width
+		tooth_depth = self.slot_depth
+		iron_depth = self.back_iron_thickness
+		geometric_fill_factor = 0.8
+		magnet_width = self.magnet_width
+		turns = int(self.turns)
+
+		collections = []
+
+		rradius = self.rotor_radius + self.back_iron_thickness
+		magnet = square(
+			[rradius, magnet_width/2],
+			[rradius + self.magnet_height, -magnet_width/2])
+		geo = rotate(np.linspace(0, np.pi*2, poles, endpoint=False), magnet)
+		collections.append({'segments': geo, 'linewidths':2, 'colors': ['red', 'blue']*(poles//2)})
+
+		# FIXME: make this a proper geo property?
+		# rradius = np.sqrt(magnet_width**2+self.gap_diameter**2)/2
+		collections.append({'segments': [circle(rradius, poles)]})
+		collections.append({'segments': [circle(self.rotor_radius, poles)]})
+
+		tooth = halftooth(radius, tip_width/2, tooth_width/2, em_width/2, -tooth_depth, -tip_depth)
+		tooth = list(np.array(tooth)*[1, -1])[::-1] + tooth
+		geo = rotate(np.linspace(0, np.pi*2, slots, endpoint=False), tooth)
+		collections.append({'segments': geo})
+		collections.append({'segments': [circle(self.stator_radius+tip_depth)]})
+
+		# FIXME: fixed width coil looks kinda silly; though suppose often the way it is?
+		coil_width = tooth_width + slot_width * geometric_fill_factor
+		gcoil = coil(
+			[radius + tip_depth, coil_width / 2],
+			[radius + tooth_depth + tip_depth, -coil_width / 2],
+			turns
+		)
+		try:
+			colors = [
+				["#FF0000", "#00FF00", "#0000FF"],
+				["#AA0000", "#00AA00", "#0000AA"]
+			]
+			polarity, phase, wf, balance = winding(poles, slots)
+			colors = np.array(colors)[polarity, phase]
+
+			a = np.linspace(0, np.pi * 2, slots, endpoint=False)
+			geo = np.where(polarity, rotate(a, gcoil).T, rotate(a, gcoil * [1, -1]).T).T
+			geo = np.reshape(geo, (-1, ) + geo.shape[-2:])
+			colors = [str(f) for f in np.repeat(colors, turns)]
+			collections.append({'segments': geo, 'linewidths': 2, 'colors': colors})
+		except:
+			pass
+		return collections
+
 
 
 
