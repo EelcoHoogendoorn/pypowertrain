@@ -80,15 +80,15 @@ def test_botwheel():
 	system = System(
 		actuator=Actuator(
 			motor=odrive.botwheel().replace(
-				# turns=5
+				turns=5
 			),
-			controller=odrive.pro().replace(
+			controller=odrive.s1().replace(
 				field_weakening=True,
 			),
 		),
-		battery=define_battery(v=48, wh=1e3),
+		battery=define_battery(v=38, wh=1e3, cell=JGNE_lifepo4_26650),
 	)
-	system_plot(system, color='power')
+	system_plot(system, color='power', max_rpm=1200, max_torque=35)
 
 
 def test_botwheel_anim():

@@ -1,6 +1,7 @@
 from pypowertrain.components.actuator import *
 from pypowertrain.components.controller import *
 from pypowertrain.components.motor import *
+from pypowertrain.components.motor.geometry import Outrunner
 
 
 def all_axle(turns=5, statorade=True):
@@ -26,7 +27,7 @@ def all_axle(turns=5, statorade=True):
 		L = 680e-6
 
 
-	geometry = Geometry.create(
+	geometry = Outrunner.create(
 		poles=46,
 		slots=42,
 		turns=turns,

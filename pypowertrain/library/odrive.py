@@ -2,6 +2,7 @@ import numpy as np
 
 from pypowertrain.components.controller import *
 from pypowertrain.components.motor import *
+from pypowertrain.components.motor.geometry import Outrunner
 
 
 def pro():
@@ -70,7 +71,7 @@ def D6374_150KV():
 	"""https://odriverobotics.com/shop/odrive-custom-motor-d6374-150kv
 	https://docs.odriverobotics.com/v/latest/hardware/odrive-motors.html
 	"""
-	geometry = Geometry.create(
+	geometry = Outrunner.create(
 		pole_pairs=7,
 		slot_triplets=4,
 		turns=5,			# FIXME: unknown!
@@ -102,7 +103,7 @@ def D5065_270KV():
 	"""https://odriverobotics.com/shop/odrive-custom-motor-d5065
 	https://docs.odriverobotics.com/v/latest/hardware/odrive-motors.html
 	"""
-	geometry = Geometry.create(
+	geometry = Outrunner.create(
 		pole_pairs=7,
 		slot_triplets=4,
 		turns=5,			# FIXME: unknown!
@@ -134,7 +135,7 @@ def M8325s_100KV():
 	"""https://odriverobotics.com/shop/m8325s
 	https://docs.odriverobotics.com/v/latest/hardware/odrive-motors.html
 	"""
-	geometry = Geometry.create(
+	geometry = Outrunner.create(
 		pole_pairs=20,
 		slot_triplets=12,
 		turns=2,			# FIXME: unknown!
@@ -174,7 +175,7 @@ def M5312s_330KV():
 	"""https://odriverobotics.com/shop/dual-shaft-motor-d5212s-300kv
 	https://docs.odriverobotics.com/v/latest/hardware/odrive-motors.html
 	"""
-	geometry = Geometry.create(
+	geometry = Outrunner.create(
 		pole_pairs=7,
 		slot_triplets=4,
 		turns=5,			# FIXME: unknown!
@@ -205,7 +206,7 @@ def M5312s_330KV():
 def botwheel():
 	"""https://odriverobotics.com/shop/botwheels"""
 
-	geometry = Geometry.create(
+	geometry = Outrunner.create(
 		pole_pairs=15,
 		slot_triplets=9,
 		turns=12,	# matched via dimensionless comparison

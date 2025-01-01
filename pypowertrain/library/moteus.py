@@ -1,5 +1,6 @@
 from pypowertrain.components.controller import *
 from pypowertrain.components.motor import *
+from pypowertrain.components.motor.geometry import Outrunner
 
 
 def n1():
@@ -55,7 +56,7 @@ def c1():
 
 def mj5208():
 	"""https://mjbots.com/products/mj5208"""
-	geometry = Geometry.create(
+	geometry = Outrunner.create(
 		pole_pairs=7,
 		slot_triplets=4,
 		turns=7, # fitted to dimensionless attrs
