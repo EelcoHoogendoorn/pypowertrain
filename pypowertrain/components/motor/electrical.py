@@ -124,7 +124,16 @@ class Electrical(Scaled, Base):
 			1 unit A_dq = ABC = [1, -1/2, -1/2]; the amplitude of the 3-phase line AC
 			1 unit V_dq = ABC = [1, 0, 0]; a vertex of the switching hexagon
 		Note that this implies a different constant k in front of the Clark transform
-		of both current and voltage, k=2/3 and k=1 respectively. We feel these are the most natural units though.
+		of both current and voltage, k=2/3 and k=1 respectively.
+
+		Given these definitions of V and A, and the implied matching definition of L, R, Kv,
+		we get motor equations without any additional constants popping up, that is
+		 * V = I*R
+		 * P = I^2*R
+		 * Vq = I*R + L*dI/dt + Kv*omega*pole_pairs
+		 * T = I/Kv
+
+		For that reason we feel these are the most natural units.
 
 		References
 		----------
