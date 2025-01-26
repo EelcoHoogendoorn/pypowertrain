@@ -1,5 +1,8 @@
 {
     "name": "Python Conda Environment",
+
+	"image": "mcr.microsoft.com/devcontainers/miniconda:3",
+
     "description": "A Python development container with Jupyter Notebook and Conda.",
     "settings": {
         "commandLine": [
