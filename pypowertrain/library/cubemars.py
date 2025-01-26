@@ -107,3 +107,39 @@ def RI100():
 		# when trying to match 0 rpm torque spike in documentation
 		# H_limit=1000,  # At/mm @ 20C
 	)
+
+
+def RI50():
+	"""https://www.cubemars.com/goods-859-RI100.html"""
+	geometry = Inrunner.create(
+		pole_pairs=6,
+		slot_triplets=5,
+		turns=10, # FIXME: unknown
+
+		gap_diameter=29e-3,
+		gap_length=16e-3,
+		slot_depth_fraction=0.65,	# trying to match 104mm outer dia
+
+		magnet_height=1.5e-3,
+		magnet_width_fraction=0.85,
+		airgap=0.5e-3,
+	)
+
+	electrical = Electrical.from_absolute(
+		geometry=geometry,
+		Kv_ll=100,
+		R_ll=1.42,
+		L_ll=1.5e-3,
+	)
+
+	# FIXME: make drone motor specific weight model?
+	mass = Mass.from_absolute(geometry=geometry, total=0.1808)
+
+	return Motor(
+		electrical=electrical,
+		thermal=basic_thermal(mass, K0=1/4),
+		mass=mass,
+		# need to jack up this number beyond usual default to not run into demag limits
+		# when trying to match 0 rpm torque spike in documentation
+		# H_limit=1000,  # At/mm @ 20C
+	)
