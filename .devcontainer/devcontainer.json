@@ -9,19 +9,13 @@
         ],
         "python.pythonPath": "/usr/bin/python3",
         "conda.enabled": true,
-        "conda.defaultEnvironment": "myenv",
+        "conda.defaultEnvironment": "pypowertrain",
         "conda.channels": ["defaults", "conda-forge"],
-        "conda.packages": [
-            "jupyter",
-            "numpy",
-            "pandas",
-            "your-library-package"
-        ]
+        "conda.packages": []
     },
     "features": {
         "git": true,
-        "python": true,
-        "jupyter": true
+        "python": true
     },
     "extensions": ["ms-ids-vscode", "jupyter"]
 }
