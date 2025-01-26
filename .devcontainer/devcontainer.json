@@ -14,7 +14,6 @@
         "conda.packages": []
     },
     "features": {
-        "git": true,
         "python": true
     },
     "extensions": ["ms-ids-vscode", "jupyter"]
