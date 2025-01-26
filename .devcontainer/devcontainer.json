@@ -10,14 +10,6 @@
             "-c",
             "while true; do sleep 1000; done"
         ],
-        "python.pythonPath": "/usr/bin/python3",
-        "conda.enabled": true,
-        "conda.defaultEnvironment": "pypowertrain",
-        "conda.channels": ["defaults", "conda-forge"],
-        "conda.packages": []
-    },
-    "features": {
-        "python": true
-    },
-    "extensions": ["ms-ids-vscode", "jupyter"]
+        "conda.enabled": true
+    }
 }
