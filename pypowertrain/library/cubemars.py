@@ -110,7 +110,7 @@ def RI100():
 
 
 def RI50():
-	"""https://www.cubemars.com/goods-859-RI100.html"""
+	"""https://www.cubemars.com/goods-856-RI50.html"""
 	geometry = Inrunner.create(
 		pole_pairs=6,
 		slot_triplets=5,
@@ -132,14 +132,16 @@ def RI50():
 		L_ll=1.5e-3,
 	)
 
-	# FIXME: make drone motor specific weight model?
-	mass = Mass.from_absolute(geometry=geometry, total=0.1808)
+	# FIXME: make frameless specific weight model?
+	mass = Mass.from_absolute(geometry=geometry, total=0.1808, tuning={'structure': 0})
 
 	return Motor(
 		electrical=electrical,
-		thermal=basic_thermal(mass, K0=1/4),
+		thermal=basic_thermal(
+			mass,
+			# this roughly matches rated (continuous?) torque in docs for 60c over ambient
+			# though such a high conductivity to ambient seems very optimistic to me
+			K0=1/1,
+		),
 		mass=mass,
-		# need to jack up this number beyond usual default to not run into demag limits
-		# when trying to match 0 rpm torque spike in documentation
-		# H_limit=1000,  # At/mm @ 20C
 	)
