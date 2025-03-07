@@ -481,9 +481,12 @@ def system_plot(
 	if output == 'show':
 		ax = plt.gca()
 		def format_coord(x, y):
-			y_coord = bisect.bisect_left(y_range, y)
-			x_coord = bisect.bisect_left(x_range, x)
-			return f"x/y=({x:.3f} {y:.3f}) {bus_power[int(y_coord), int(x_coord)]:.2f}"
+			sample = point_sample_graph(x_range, y_range, x, y)
+			return (f"{x_label} {x:.2f} \t "
+					f"{y_label} {y:.2f} \n "
+					f"bus power {sample(bus_power):.2f} \t "
+					f"efficiency {sample(efficiency)*100:.2f} \t "
+					f"dissipation {sample(dissipation):.2f}")
 		ax.format_coord = format_coord
 		plt.show()
 	elif output == 'return':
@@ -491,6 +494,19 @@ def system_plot(
 	else:
 		plt.savefig(output)
 		plt.close(fig)
+
+
+def point_sample_graph(rx, ry, x, y):
+	"""Sample graph with ranges [rx,ry] at point [x,y], with interpolation"""
+	ix = int(bisect.bisect_left(rx, x)) - 1
+	iy = int(bisect.bisect_left(ry, y)) - 1
+	dx = (x - rx[ix]) / (rx[ix+1]-rx[ix])
+	dy = (y - ry[iy]) / (ry[iy+1]-ry[iy])
+	w = np.outer([1-dx, dx], [1-dy, dy])
+	def inner(graph):
+		g = graph[iy:iy + 2, ix:ix + 2]
+		return np.sum(w * g.T)
+	return inner
 
 
 def sample_graph(graph, sample_point):
