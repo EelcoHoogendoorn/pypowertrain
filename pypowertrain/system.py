@@ -1,3 +1,5 @@
+import bisect
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -125,7 +127,8 @@ def system_limits(
 
 	Returns
 	-------
-	List of graphs
+	Dict[str, ndarray]
+		dict of graphs
 
 	References
 	-------
@@ -138,9 +141,13 @@ def system_limits(
 	#  where we can observe limit curves as values surpassing 1
 	#  nope.. kinda fails for voltage limit already. its 1 in entire FW region. dropping volt limit will produce large jumps
 	#  seems like both sides of the FW region would require special treatment already.
+	#  in general, the problem is that each operating point is chosen from a higher dimensional space,
+	#  potentially subject to an arbitrary number of constraints.
+	#  constraints need not be hard; the question 'would we have chosen a different operating point in the absence of this constraint'
+	#  is a different one from 'does there exist an operating point in the absence of this constraint'
 
 	def masking(minimizer, mask):
-		# now, we pick the optimal operating conditions, of those left in the mask
+		# pick the optimal operating conditions, of those left in the mask
 		# of all valid options for a given torque, we pick the one most favorable
 		ma = np.ma.array(minimizer, mask=1 - mask)
 		mask = np.ma.min(ma, axis=1).mask
@@ -155,7 +162,7 @@ def system_limits(
 	controller = actuator.controller
 
 	if controller.field_weakening:
-		# FIXME: are we at all interested in positive Id? prob not, PM saturation limits sensible Id
+		# FIXME: are we at all interested in positive Id? prob not, PM/iron saturation limits sensible Id
 		arange = np.linspace(-actuator.phase_current_limit, +actuator.phase_current_limit*0.0, gridsize+1)
 	else:
 		# FIXME: can we easily simulate what a non-FOC controller would do in practice?
@@ -215,7 +222,7 @@ def system_limits(
 		omega_elec_rad = omega_elec_hz * 2 * np.pi
 
 		# FIXME: work Id-FW-dependence into iron drag? Id division should be about equal to demag current limit
-		#  effect seems quite minimal in practice; like 3% kph continuous rating. not nothing tho
+		#  effect seems quite minimal in practice; like +3% kph continuous rating. not nothing tho
 		drag_torque = np.sign(omega_axle_hz) * motor.iron_drag(omega_axle_hz) #* (1+Id/300)**2
 		# NOTE: both I and R are already in the q-d frame; dont need another constant like 3/2 here.
 		# FIXME: split this in motor and controller dissipation?
@@ -224,11 +231,11 @@ def system_limits(
 		dissipation = copper_loss + iron_loss
 		mechanical_torque = em_torque - drag_torque
 		mechanical_power = mechanical_torque * omega_axle_rad
-		bus_power = dissipation + mechanical_power
+		bus_power = dissipation + em_torque * omega_axle_rad	# dont use mechanical_power here; iron losses need to come out of the bus!
 
 		bus_current = bus_power / battery.voltage
 		# compute bus voltage sag/rise
-		# FIXME: solve bus voltage sag properly; get wonky results right now for high bus resistances
+		# FIXME: this is a first-order correction; solve bus voltage sag properly; get wonky results right now for artificially high bus resistances
 		effective_bus_voltage = battery.voltage - bus_current * bus_resistance
 		# how much DC we really feel at the bus after clipping and series.
 		# excessive bus voltage is clipped to controller voltage rather than making it explode
@@ -472,6 +479,12 @@ def system_plot(
 
 	default_annotate()
 	if output == 'show':
+		ax = plt.gca()
+		def format_coord(x, y):
+			y_coord = bisect.bisect_left(y_range, y)
+			x_coord = bisect.bisect_left(x_range, x)
+			return f"x/y=({x:.3f} {y:.3f}) {bus_power[int(y_coord), int(x_coord)]:.2f}"
+		ax.format_coord = format_coord
 		plt.show()
 	elif output == 'return':
 		return fig
