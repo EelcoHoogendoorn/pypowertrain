@@ -28,7 +28,7 @@ class Actuator(Base):
 		A = self.phase_current_limit
 		# salience = (self.motor.Ld - self.motor.Lq)
 		salience = self.motor.electrical.salience
-		t = A * self.motor.Kt + A * A / 2 * np.abs(salience) * self.motor.geometry.pole_pairs
+		t = A * self.motor.Kt_dq + A * A / 2 * np.abs(salience) * self.motor.geometry.pole_pairs
 		_, t = self.gearing.forward(1, t)
 		return t
 	@property
@@ -56,9 +56,8 @@ class Actuator(Base):
 	# 	# return np.sqrt(ripple(self.motor.electrical.Lq)**2 + ripple(self.motor.electrical.Ld)**2)
 
 	@property
-	def phase_resistance(self):
-		f = 1.5		# FIXME: to convert per-leg to 3-phase frame
-		return self.motor.resistance + self.controller.resistance * f * self.n_series
+	def R_dq(self):
+		return self.motor.R_dq + self.controller.R_dq * self.n_series
 
 	def temperatures(self, mps, rpm, copper_loss, iron_loss, dt, key='coils'):
 		"""build motor temp graphs from heat source/sink graphs"""

@@ -51,6 +51,10 @@ class Controller(Base):
 	def resistance(self):
 		return self.internal_resistance
 		# return self.Rdson + self.Rshunt
+	@property
+	def R_dq(self):
+		f = 1.5		# FIXME: to convert per-leg to 3-phase frame
+		return self.resistance * f
 
 
 def define_ideal_controller():

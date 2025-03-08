@@ -95,7 +95,7 @@ JGNE_lifepo4_26650 = Cell(
 	minimum_voltage=2.5,
 	resistance=20e-3,
 	capacity=4.0,  # Ah
-	peak_discharge=3,  # in units of ; this is peak continuous; 5s pulse about double?
+	peak_discharge=3,  # in units of C; this is peak continuous; 5s pulse about double?
 	peak_charge=3,
 	mass=88e-3,  # in kg
 )

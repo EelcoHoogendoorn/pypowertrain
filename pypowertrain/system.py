@@ -176,7 +176,7 @@ def system_limits(
 	rpm, trange = actuator.gearing.backward(rpm, trange)
 
 	salience = motor.electrical.salience * motor.geometry.pole_pairs
-	Kt_dq = motor.Kt
+	Kt_dq = motor.Kt_dq
 	Id, em_torque = np.meshgrid(arange, trange)
 	Iq = em_torque / (Kt_dq + Id * salience)
 
@@ -192,9 +192,9 @@ def system_limits(
 	I_squared = Id**2 + Iq**2 #+ actuator.ripple_current**2
 
 	bus_resistance = actuator.bus.resistance + battery.resistance
-	R_dq = actuator.phase_resistance		# resistance in dq frame of motor and controller combined
+	R_dq = actuator.R_dq		# resistance in dq frame of motor and controller combined
 	Ke_dq = Kt_dq / motor.geometry.pole_pairs	# V / (elec_rad / s)
-	L_d, L_q = motor.electrical.Ld, motor.electrical.Lq
+	L_d, L_q = motor.L_d, motor.L_q
 
 	# formulate voltage relations of the motor to solve for states within voltage limits
 	# FIXME: move into electrical class? R_dq depends on controller tho
@@ -247,12 +247,17 @@ def system_limits(
 		# https://www.portescap.com/en/newsroom/whitepapers/2021/10/understanding-the-effect-of-pwm-when-controlling-a-brushless-dc-motor
 		# note: this is for a switching pattern with zero state (3-level)
 		D = v_ratio
-		ripple_factor = voltage_effective / (controller.ripple_freq * motor.electrical.L)
+		ripple_factor = voltage_effective / (controller.ripple_freq * motor.L_dq)
 		ripple_delta = D * (1 - D) * ripple_factor  # peak to peak variation
 		ripple_loss = ripple_delta**2 / 12 * R_dq	# to rms equivalent requires factor 12
+		ripple_loss *= 2   # x2 is empirical, to match moteus data. single vs triple phase? high frequency iron loss effects?
+
+		# empirical model of gate-driving, switching losses, snubber-power-loss, etc. note sure; but fits moteus data
+		switching_losses = controller.ripple_freq / 30e3 # FIXME: make configurable?
+		ripple_loss += switching_losses
 
 		# adjust power terms for ripple losses
-		# FIXME: solve this dependency better? bus power should feed back into the above; but lets assume ripple too small to impact bus behavior for now
+		# FIXME: solve this dependency better? bus power should feed back into the above; but lets assume ripple and switching too small to impact bus behavior for now
 		copper_loss += ripple_loss
 		dissipation += ripple_loss
 		bus_power += ripple_loss
@@ -386,7 +391,7 @@ def system_plot(
 	y_label, y_range = system.y_axis(torque_range)
 
 	def imshow(im, **kwargs):
-		a = plt.pcolormesh(x_range, y_range, im, mouseover=True, **kwargs)
+		a = plt.pcolormesh(x_range, y_range, im, mouseover=True, shading='gouraud', **kwargs)
 		plt.colorbar()
 		return a
 

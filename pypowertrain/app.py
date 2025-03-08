@@ -556,9 +556,9 @@ def system_dash(
 		motor = pickle_decode(motor)
 		return \
 			f'Mass:\t {motor.mass.total:0.3f} \tkg\n' \
-			f'Kt:\t\t {motor.Kt:0.3f} \tNm/A\n' \
-			f'R: \t\t {motor.resistance:0.3f} \tohm\n' \
-			f'L: \t\t {motor.electrical.L*1000:0.3f} \tmH'
+			f'Kt:\t\t {motor.Kt_ll:0.3f} \tNm/A\n' \
+			f'R: \t\t {motor.R_ll:0.3f} \tohm\n' \
+			f'L: \t\t {motor.L_ll*1000:0.3f} \tmH'
 
 
 	@callback(
