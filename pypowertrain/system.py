@@ -1,5 +1,3 @@
-import bisect
-
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -254,7 +252,7 @@ def system_limits(
 
 		# empirical model of gate-driving, switching losses, snubber-power-loss, etc. note sure; but fits moteus data
 		switching_losses = controller.ripple_freq / 30e3 # FIXME: make configurable?
-		ripple_loss += switching_losses
+		ripple_loss += switching_losses		# FIXME: put switching loss in its own graph
 
 		# adjust power terms for ripple losses
 		# FIXME: solve this dependency better? bus power should feed back into the above; but lets assume ripple and switching too small to impact bus behavior for now
@@ -501,17 +499,19 @@ def system_plot(
 		plt.close(fig)
 
 
+def sample_range(r, x):
+	"""construct slice and weights to sample x in r with linear interpolation"""
+	i = np.searchsorted(r, x) - 1
+	d = (x - r[i]) / (r[i+1]-r[i])
+	return slice(i, i+2), [1-d, d]
+
+
 def point_sample_graph(rx, ry, x, y):
-	"""Sample graph with ranges [rx,ry] at point [x,y], with interpolation"""
-	ix = int(bisect.bisect_left(rx, x)) - 1
-	iy = int(bisect.bisect_left(ry, y)) - 1
-	dx = (x - rx[ix]) / (rx[ix+1]-rx[ix])
-	dy = (y - ry[iy]) / (ry[iy+1]-ry[iy])
-	w = np.outer([1-dx, dx], [1-dy, dy])
-	def inner(graph):
-		g = graph[iy:iy + 2, ix:ix + 2]
-		return np.sum(w * g.T)
-	return inner
+	"""Construct a callable that will sample graph with ranges [rx,ry] at point [x,y], with linear interpolation"""
+	sx, wx = sample_range(rx, x)
+	sy, wy = sample_range(ry, y)
+	w = np.outer(wy, wx)
+	return lambda graph: np.sum(w * graph[sy, sx])
 
 
 def sample_graph(graph, sample_point):

@@ -76,7 +76,7 @@ def test_moped():
 	print('turns:', motor.geometry.turns)
 	print('teeth:', motor.geometry.slot_depth)
 	print('radius:', motor.geometry.radius)
-	print('resistance:', motor.resistance)
+	print('resistance:', motor.R_dq)
 	# optimized.actuator.plot()
 
 	optimized = optimized.replace(

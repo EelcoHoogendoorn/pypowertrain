@@ -35,9 +35,9 @@ def test_ebike():
 	)
 	bike.actuator.motor.electrical.attrs['d_1'] = 0
 
-	Kv = bike.actuator.motor.electrical.Kv#/1.5*2 #* 0.9	# FIXME: this is in q frame; convert to ll? dont know what simulator expects
-	R = bike.actuator.motor.electrical.R * 2 / 1.5
-	L = bike.actuator.motor.electrical.L * 1000 * 2 / 1.5# *0.9
+	Kv = bike.actuator.motor.Kv_dq	# FIXME: this is in dq frame; convert to ll? dont know what simulator expects. seems like dq?
+	R = bike.actuator.motor.R_ll
+	L = bike.actuator.motor.L_ll * 1000
 	d0 = bike.actuator.motor.electrical.d_0
 	d1 = bike.actuator.motor.electrical.d_1	/ 60 # d1 internally not in rpm
 	pp = bike.actuator.motor.geometry.pole_pairs
