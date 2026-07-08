@@ -105,3 +105,54 @@ def test_optimize_botwheel():
 	system = optimized.replace(battery__charge_state=0.1)
 	system_plot(system, targets=targets)
 
+
+def test_optimize_micro():
+	"""Design a motor optimized for maximum stall torque per kg, for the odrive micro"""
+	# battery = define_battery_75v()
+	battery = define_battery(v=30, wh=100)
+
+	actuator = Actuator(
+		motor=odrive.M5312s_330KV(),#.replace(__turns_scale=4, __radius_scale=0.7, __length_scale=0.7),
+		controller=odrive.micro().replace(
+			freq_limit=2000
+		),
+	)
+	system = System(actuator=actuator, battery=battery)
+
+	bounds = {
+		'__geometry__slot_depth_scale': (0.5, 1.1),
+		# '__geometry__length_scale': (0.5, 1.5),
+		'__geometry__turns_scale': (0.5, 4),
+		'__geometry__radius_scale': (0.9, 1.1),
+	}
+
+	target_torque = [-.5, +.5]
+	target_rpm = [3000] * 2
+	target_dissipation = [1500] * 2
+	target_weight = [(0, 1)] * 2
+
+	# make sure optimized motor meets specs over a range of (adverse) conditions
+	conditions = [
+		{
+			'battery__charge_state': s,
+			'actuator__motor__coil_temperature': t,
+			'actuator__motor__magnet_temperature': t,
+		}
+		for s in [0.1, 0.9]
+		for t in [0, 40]
+	]
+	targets = target_torque, target_rpm, target_dissipation, target_weight
+
+
+	print('weight', system.weight)
+	print('weight', system.actuator.weight)
+
+	optimized = system_optimize(system, bounds, targets, conditions)
+
+	optimized.actuator.plot()
+	# print(optimized)
+	print('opt weight', optimized.weight)
+	print('opt weight', optimized.actuator.weight)
+
+	system = optimized.replace(battery__charge_state=0.9)
+	system_plot(system, targets=targets)

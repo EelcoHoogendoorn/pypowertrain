@@ -63,14 +63,18 @@ def test_cubemars_RI50():
 	print()
 	system = System(
 		actuator=Actuator(
-			motor=cubemars.RI50(),
+			motor=cubemars.RI50().replace(
+				# __turns_scale=0.33,
+				__termination='delta',
+			),
 			controller=moteus.n1().replace(
+				# field_weakening=True,
 				# modulation_factor=0.9 * Controller.commutation['sine']
 			),
 		),
 		battery=define_battery(v=24, wh=1e3),
 	)
 	# system.actuator.plot()
-	system_plot(system)
+	system_plot(system)#, max_rpm=7000, max_torque=2.5, output='vanilla.png')
 
 

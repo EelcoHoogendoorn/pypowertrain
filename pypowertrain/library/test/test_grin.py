@@ -12,6 +12,12 @@ def test_grin():
 		battery=define_battery_75v(),
 	)
 
+	print(system.actuator.motor.geometry.phase_wire_length)
+	print(system.actuator.motor.geometry.back_iron_thickness)
+	# in reality, 6.5/2mm at max, 3mm or so in the middle. 3.7 not a bad guess; 46/40*3.2~3.7
+	# 3.7 is derived from tooth width though... not related to magnets. better to have it independent?
+
+	return
 	# system.actuator.plot()
 	system_plot(system)
 

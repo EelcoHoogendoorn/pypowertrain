@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pypowertrain"
+version = "0.1.0"
+description = "Simulation and optimization of electric powertrains"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+dependencies = [
+    "numpy",
+    "scipy>=1.9",
+]
+
+# Optional extras: the desktop Dash GUI and static plotting.
+# The browser (shinylive/Pyodide) build needs only the core dependencies above.
+[project.optional-dependencies]
+gui = [
+    "dash",
+    "dash-bootstrap-components",
+    "plotly",
+    "scikit-image",
+    "jsonpickle",
+    "pandas",
+]
+plot = ["matplotlib"]
+
+[tool.setuptools.packages.find]
+include = ["pypowertrain*"]

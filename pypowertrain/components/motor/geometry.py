@@ -222,19 +222,28 @@ class Geometry(Base):
 	@property
 	def coils_volume(self):	# m^3
 		"""Full coil volume, without any fill-factors applied"""
-		return self.slots_area * (self.length + self.ew_length) * 2
+		# FIXME: does this formula make sense?
+		return self.slots_area * (self.length + self.ew_length * 2)
 	@property
 	def coils_volume_fill(self):	# m^3
 		"""Actual volume occupied by actual wires, all slots"""
 		return self.coil_fill * self.coils_volume
 	@property
-	def coils_area_fill(self):	# m^3
+	def coils_area_fill(self):	# m^2
 		"""Actual area occupied by actual wires"""
 		return self.slots_area * self.coil_fill
 	@property
-	def coil_area_fill(self):	# m^3
+	def coil_area_fill(self):	# m^2
 		"""Actual area occupied by actual wires"""
 		return self.slot_area * self.coil_fill
+	@property
+	def wire_area(self):
+		"""Area of a single wire bundle"""
+		return self.coil_area_fill / self.turns
+	@property
+	def phase_wire_length(self):
+		"""Length of wire on a single phase"""
+		return self.coils_volume_fill / 3 / self.wire_area
 	@property
 	def magnets_volume(self):
 		return self.gap_area * self.magnet_height * self.magnet_width_fraction

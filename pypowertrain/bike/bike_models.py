@@ -32,6 +32,10 @@ def define_moped(front=False, rear=True):
 			nominal_kmh=50,
 			wheel_diameter=0.5,  # 20inch wheel moped
 			front=front, rear=rear,
+
+			# cog_rear=0.7,
+			# cog_front=0.8,
+			# cog_height=0.6,
 		),
 		actuator=grin_actuator,
 		battery=define_battery(v=75, wh=2500),

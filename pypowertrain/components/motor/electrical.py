@@ -117,9 +117,8 @@ class Electrical(Scaled, Base):
 			ll: line-to-line; amplitude or peak value
 			phase: properties of a single set of coils; between two termination endpoints
 			dq: values in the Clark transformed frame
-		Internally, values are stored in terms of phase quantities, as they are invariant to changes in termination
-		Note these are physical coils; what sits between the terminations, not an equivalent after a mathematical transform
-
+		Internally, values are stored in terms of dq quantities, 
+		
 		Our clark transformed frames are defined as such:
 			1 unit A_dq = ABC = [1, -1/2, -1/2]; the amplitude of the 3-phase line AC
 			1 unit V_dq = ABC = [1, 0, 0]; a vertex of the switching hexagon
@@ -149,12 +148,6 @@ class Electrical(Scaled, Base):
 		should scale appropriately as well.
 
 		"""
-		# FIXME: for proper star/delta switching, properties now expressed in terms of line-amps,
-		#  need to be stored internally as per-phase properties instead
-		#  things like demagnetization and saturation currents need to be stored in per phase quantities
-		#  should be the case they kick in at the same Nm of output no?
-		#  or do they? note all else equal, delta has sqrt(3) higher line currents;
-		#  and sqrt(3) lower phase-per-line currents, after rotating unit current by 30deg to find max over 3phase
 
 		# convert to phase values
 		if R_ll:

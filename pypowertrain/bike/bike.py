@@ -78,6 +78,8 @@ class BikeLoad(Load):
 
 
 	def dash_tab(self):
+		from dash import html, dcc
+		import dash_bootstrap_components as dbc
 		return dbc.Tab(label='Load', children=[
 			html.Label('Weight (Kg)'),
 			dcc.Slider(0, 100, 10, value=self.rider_weight, id='weight-slider'),
@@ -104,6 +106,7 @@ class BikeLoad(Load):
 		])
 
 	def dash_callback(self):
+		from dash import callback, Output, Input
 		@callback(
 			Output('load', 'data'),
 
@@ -151,30 +154,37 @@ class BikeSystem(System):
 		return (1/2) * self.weight * mps**2
 
 	def aero_drag(self, mps):
+		"""Newtons as function of m/s"""
 		rho = 1.225
 		return (1 / 2) * rho * self.load.CdA * mps * np.abs(mps)
 
 	def gravity_drag(self):
+		"""Newtons"""
 		return self.downforce * np.sin(-self.load.radians)
 
 	def rolling_drag(self, mps):
+		"""Newtons"""
 		return self.load.Cr * self.downforce * np.sign(mps)
 
 	def drag(self, kmh):
+		"""Total vehicle drag in newtons"""
 		mps = kmh / 3.6
 		return self.rolling_drag(mps) + self.aero_drag(mps) - self.gravity_drag()
 
 	@property
 	def downforce(self):
+		"""total downforce in Newton"""
 		return self.weight * 9.81
 	@property
 	def rear_downforce(self):
+		"""Downforce on rear wheel in Newton, at zero acceleration"""
 		return self.downforce * self.load.cog_front_eff / self.load.wheelbase_eff
 	@property
 	def front_downforce(self):
+		"""Downforce on front wheel in Newton, at zero acceleration"""
 		return self.downforce * self.load.cog_rear_eff / self.load.wheelbase_eff
 	def shift(self, t_force):
-		"""calc weight shift on each wheel as function of total traction force"""
+		"""calc + - weight shift on each wheel in Newton as function of total traction force in Newton"""
 		return (t_force * self.load.cog_height) / self.load.wheelbase
 	def shifted_rear_downforce(self, t_force):
 		return self.rear_downforce + self.shift(t_force)
@@ -183,13 +193,17 @@ class BikeSystem(System):
 
 	@cached_property
 	def stoppie(self):
+		"""Solve for total traction force in Newton that results in zero rear downforce"""
 		return root(self.shifted_rear_downforce, -self.downforce/2)
 	@cached_property
 	def wheelie(self):
+		"""Solve for total traction force in Newton that results in zero front downforce"""
 		return root(self.shifted_front_downforce, self.downforce/2)
 
 	@cached_property
 	def traction_efficiency(self):
+		"""Returns an x-y curve, mapping from commanded traction to traction efficiency,
+		where the latter is the ratio of commanded traction in N for all wheels, to the realized total traction in N"""
 		q = self.downforce * 1.01
 		F = np.linspace(-q, q, 100, endpoint=True)	# force applied at each wheel
 		r = F * self.load.rear

@@ -24,7 +24,7 @@ def test_moteus_n1():
 	Alternatively, it could be the rpm limit is dictated by bearings.
 	"""
 	system = fixture()
-	system_plot(system, annotations='tdeos')
+	system_plot(system, annotations='tdeos', output='mj5208_n1.png')
 	# system.actuator.plot()	# phase assignment broken for this motor
 
 

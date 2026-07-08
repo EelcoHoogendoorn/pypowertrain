@@ -36,6 +36,7 @@ def all_axle(turns=5, statorade=True):
 		gap_length=27e-3,
 		slot_depth=12e-3,
 		magnet_height=3e-3,
+		magnet_width_fraction=0.85,
 		airgap=0.7e-3,
 	)
 

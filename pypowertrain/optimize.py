@@ -73,4 +73,5 @@ def system_optimize(
 		polish=True,
 		integrality=integrality,
 	)
+	print(dict(zip(keys, res.x)))
 	return evolve(res.x)

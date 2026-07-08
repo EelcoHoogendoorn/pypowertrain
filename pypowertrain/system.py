@@ -1,13 +1,8 @@
-import matplotlib.pyplot as plt
 import numpy as np
 
 from pypowertrain.utils import *
 from pypowertrain.components.actuator import Actuator
 from pypowertrain.components.battery import Battery
-
-
-from dash import html, dcc, callback, Output, Input
-import dash_bootstrap_components as dbc
 
 
 @dataclass
@@ -39,6 +34,8 @@ class DummyLoad(Load):
 		return 0
 
 	def dash_tab(self):
+		from dash import html, dcc
+		import dash_bootstrap_components as dbc
 		return dbc.Tab(label='Load', children=[
 			html.Label('Inertia (Kg m^2)'),
 			dcc.Slider(0, 10, 1, value=self.inertia, id='inertia-slider'),
@@ -47,6 +44,7 @@ class DummyLoad(Load):
 		])
 
 	def dash_callback(self):
+		from dash import callback, Output, Input
 		@callback(
 			Output('load', 'data'),
 
@@ -377,7 +375,7 @@ def system_plot(
 	thermal_specs = [
 		{'color': 'yellow', 'dt': 5000, 'dT': 60},
 		{'color': 'orange', 'dt': 60, 'dT': 60},
-		{'color': 'red', 'dt': 2, 'dT': 40},
+		{'color': 'red', 'dt': 5, 'dT': 40},
 	]
 	thermals = {
 		(s['color'], s['dt']): system.temperatures(
@@ -487,6 +485,9 @@ def system_plot(
 			sample = point_sample_graph(x_range, y_range, x, y)
 			return (f"{x_label} {x:.2f} \t "
 					f"{y_label} {y:.2f} \n "
+					f"accel {sample(acceleration):.2f} \t "
+					f"iron {sample(iron_loss):.2f} \t "
+					f"ripple/switch{sample(graphs['ripple_loss']):.2f} \t "
 					f"bus power {sample(bus_power):.2f} \t "
 					f"efficiency {sample(efficiency)*100:.2f} \t "
 					f"dissipation {sample(dissipation):.2f}")

@@ -37,7 +37,7 @@ class Mass(Scaled, Base):
 		volumes = {k: getattr(geometry, list(v.keys())[0]) for k, v in scalings.items()}
 		masses = {k: volumes[k] * cps[k] * tuning.get(k, 1) for k in volumes}
 		normalizer = sum(masses.values()) / total
-		# print('normalizer', normalizer)
+		print('normalizer', normalizer)
 		attrs = {k: masses[k] / normalizer for k in masses}
 		return attrs, scalings
 

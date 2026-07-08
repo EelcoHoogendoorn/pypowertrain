@@ -9,39 +9,47 @@ def test_D6374_150KV():
 		actuator=Actuator(
 			motor=odrive.D6374_150KV(),
 			controller=odrive.pro().replace(
-				freq_limit=2000,
+				freq_limit=700,
 			),
 		),
-		battery=define_battery(v=48, wh=1e3),
+		battery=define_battery(v=58, wh=1e3),
 	)
+	print(system.actuator.motor.electrical.Kt)
 	system_plot(system)
 
 
-def test_D5065_270KV():
+def test_50_270KV():
 	system = System(
 		actuator=Actuator(
-			motor=odrive.D5065_270KV(),
-			controller=odrive.pro().replace(
+			motor=odrive.D5065_270KV().replace(
+				# __turns_scale=5,
+				# __termination='delta',
+				# __length_scale=1.5,
+			),
+			controller=odrive.s1().replace(
 				freq_limit=2000,
 				field_weakening=True,
 			),
 		),
 		battery=define_battery(v=48, wh=1e3),
 	)
-	system_plot(system, color='dissipation', annotations='tdeos')
+	print(system.actuator.motor.electrical.R)
+	print(system.actuator.motor.electrical.Kt)
+	print(system.actuator.motor.mass.total)
+	system_plot(system, color='Iq', annotations='tdeos')
 
 
 def test_M8325s_100KV():
 	system = System(
 		actuator=Actuator(
-			motor=odrive.M8325s_100KV(),
-			controller=odrive.pro().replace(
-				freq_limit=2000
+			motor=odrive.M8325s_100KV().replace(__termination='star'),
+			controller=odrive.s1().replace(
+				freq_limit=2000,
 			),
 		),
-		battery=define_battery(v=14, wh=1000),
+		battery=Battery(cell=samsung_21700,S=10, P=2,),
 	)
-	system_plot(system)
+	system_plot(system, max_torque=7, max_rpm=6000, output='star210.png')
 
 
 def test_M5312s_330KV():
@@ -69,6 +77,9 @@ def test_micro():
 		battery=define_battery(v=30, wh=100),
 	)
 	print(system.actuator.weight)
+	print(system.actuator.motor.Kv_ll)
+	print(system.actuator.motor.R_ll)
+	return
 	system_plot(system)
 
 
@@ -80,15 +91,15 @@ def test_botwheel():
 	system = System(
 		actuator=Actuator(
 			motor=odrive.botwheel().replace(
-				turns=5
+				# turns=5
 			),
 			controller=odrive.s1().replace(
 				field_weakening=True,
 			),
 		),
-		battery=define_battery(v=38, wh=1e3, cell=JGNE_lifepo4_26650),
+		battery=define_battery(v=24*1, wh=1e3, cell=JGNE_lifepo4_26650),
 	)
-	system_plot(system, color='power', max_rpm=1200, max_torque=35)
+	system_plot(system, color='power', max_rpm=800, max_torque=30)
 
 
 def test_botwheel_anim():
