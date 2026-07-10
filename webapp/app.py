@@ -8,8 +8,8 @@ Parity status vs. the Dash app:
   done  : motor / battery / controller / thermal / load controls, library presets,
           property readouts, the 4 heatmap types, all 6 overlay contours,
           off-by-default axis rescaling, negative-axis toggles, resolution,
-          zero-axis reference lines.
-  todo  : editable thermal table, geometry view, target markers.
+          zero-axis reference lines, motor geometry cross-section.
+  todo  : editable thermal table, target markers.
 """
 import numpy as np
 import plotly.graph_objects as go
@@ -119,6 +119,22 @@ def get_contour(X, Y, data):
         y = np.interp(c[:, 0], np.arange(len(Y)), Y)
         out.append((x, y))
     return out
+
+
+def geometry_traces(motor):
+    """Motor cross-section as {color: (xs, ys)} polylines. Segments of one color are
+    merged into a single trace (None-separated) to keep the trace count tiny."""
+    by_color = {}
+    for grp in motor.geometry.plot_geometry():
+        segs = grp["segments"]
+        colors = grp.get("colors", None)
+        for i, seg in enumerate(segs):
+            color = colors[i] if colors else "gray"
+            xs, ys = by_color.setdefault(color, ([], []))
+            seg = np.asarray(seg, dtype=float)
+            xs.extend(seg[:, 0].tolist()); xs.append(None)
+            ys.extend(seg[:, 1].tolist()); ys.append(None)
+    return by_color
 
 
 def compute_plot(system, plot_key, max_rpm, max_torque, resolution, neg_axes, overlays):
@@ -250,10 +266,16 @@ app_ui = ui.page_sidebar(
         width=380,
     ),
     ui.tags.style(
-        ".shiny-ipywidget-output, .shiny-ipywidget-output .plotly-graph-div,"
+        # fill the inner Plotly divs to their widget's height (set via output_widget height=),
+        # but NOT the widget container itself, so its explicit vh height is respected inside tabs.
+        ".shiny-ipywidget-output .plotly-graph-div,"
         ".shiny-ipywidget-output .js-plotly-plot { height: 100% !important; }"
+        ".tab-content, .tab-pane { height: 90vh; }"
     ),
-    output_widget("plot", height="92vh", fill=True),
+    ui.navset_tab(
+        ui.nav_panel("Performance", output_widget("plot", height="88vh", fill=True)),
+        ui.nav_panel("Geometry", output_widget("geometry", height="88vh", fill=True)),
+    ),
     title="pypowertrain (browser)",
     fillable=True,
 )
@@ -363,6 +385,28 @@ def server(input, output, session):
                 line=dict(color=color, dash="dash" if dash else "solid"),
                 hoverinfo="skip" if dash else "name",
             )
+
+    # Second persistent widget: motor cross-section geometry. Depends only on the motor,
+    # but recomputing from system() on any change is cheap (pure numpy).
+    geo_fig = go.FigureWidget()
+    geo_fig.update_layout(
+        title="Motor cross-section", margin=dict(l=20, r=20, t=40, b=20),
+        autosize=True, template="plotly_white", showlegend=False,
+    )
+    geo_fig.update_xaxes(visible=False)
+    geo_fig.update_yaxes(visible=False, scaleanchor="x", scaleratio=1)  # equal aspect
+
+    @render_widget
+    def geometry():
+        return geo_fig
+
+    @reactive.effect
+    def _update_geometry():
+        traces = geometry_traces(system().actuator.motor)
+        geo_fig.data = ()  # clear and redraw
+        for color, (xs, ys) in traces.items():
+            geo_fig.add_scatter(x=xs, y=ys, mode="lines", line=dict(color=color, width=1.5),
+                                showlegend=False, hoverinfo="skip")
 
 
 app = App(app_ui, server)
