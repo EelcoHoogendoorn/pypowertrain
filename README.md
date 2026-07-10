@@ -2,7 +2,7 @@
 pypowertrain
 =========
 
-[Get started with a runnable notebook!](https://mybinder.org/v2/gh/EelcoHoogendoorn/pypowertrain/HEAD?labpath=getting_started.ipynb)
+### ▶ [Try the interactive design tool in your browser](https://eelcohoogendoorn.github.io/pypowertrain/)
 
 Summary
 -------
@@ -33,6 +33,8 @@ def test_example(kmh=40, inch=20):
     system_dash(bike).run()
 ```
 <img src="./grin_with_odrive_mpl.png" width="400" height="300" /> <img src="./grin_with_odrive_dash.png" width="450" height="300" />
+
+<sub>A [getting-started notebook](getting_started.ipynb) is also included (and can be run [via Binder](https://mybinder.org/v2/gh/EelcoHoogendoorn/pypowertrain/HEAD?labpath=getting_started.ipynb), though that free service is often slow to start or unavailable).</sub>
 
 This package has functionality for [optimizing](./pypowertrain/test/test_optimize.py) over all components of a powertrain, such as motor geometry, battery configuration or controller parameters, to attain certain design constraints, while minimizing objectives such as weight or cost. Currently, the only physical systems implemented are vehicles, but it is designed to be easy to extend to robotic actuators, quadcopters, wind turbines, or you name it; or design generic motors outside of the context of a load model.
 
